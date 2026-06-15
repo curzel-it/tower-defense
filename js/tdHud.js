@@ -37,6 +37,8 @@ let reviveWrap;
 let reviveSig = "";   // signature of the rendered revive set (see renderRevives)
 // Game-over refs.
 let gameOver = null, goTitleEl, goWaveEl, goScoreEl, goBestEl, goNewBest = null;
+// Between-maps "path cleared" popup refs.
+let mapClearedEl = null, mcSubEl, mcNextBtn, mcWaitEl;
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
@@ -48,9 +50,11 @@ export function installTdHud(handlers = {}) {
   buildStatusBar();
   buildDock();
   buildGameOver();
+  buildMapCleared();
   document.body.appendChild(root);
   document.body.appendChild(dock);
   document.body.appendChild(gameOver);
+  document.body.appendChild(mapClearedEl);
   // The squad's coin purse lives at wallet index 0 (TD folds every hero there).
   onWalletChange((next, idx) => { if (goldEl && idx === 0) goldEl.textContent = String(next); });
 }
@@ -64,6 +68,7 @@ export function hideTdHud() {
   if (root) root.style.display = "none";
   if (dock) dock.style.display = "none";
   if (gameOver) gameOver.style.display = "none";
+  if (mapClearedEl) mapClearedEl.style.display = "none";
   setTdActionMode(null); // hand the touch cluster back to the normal game
 }
 
@@ -72,6 +77,10 @@ export function hideTdHud() {
 //          recruit:{cost,can,label}, revives:[{index,name,cost}], buildHint }
 export function updateTdHud(model) {
   if (!root) return;
+  // Between-maps intermission: raise/lower the "path cleared" popup. Handled
+  // before the readOnly early-return below so co-op guests see it too (with a
+  // "waiting for host" note in place of the host-only "Next map" button).
+  if (model.mapCleared) showMapCleared(model); else hideMapCleared();
   const build = model.phase === "Build";
   const wave = model.phase === "Wave";
   const touch = onTouch();
@@ -184,6 +193,25 @@ export function showTdGameOver(result) {
   gameOver.style.display = "flex";
 }
 
+// Raise the between-maps "path cleared" popup. Driven every frame off the model,
+// so it stays cheap: the button is built once (stable across frames so a click
+// lands), and we only patch the subtitle text + swap button/wait note. `readOnly`
+// (co-op guest) hides the host-only button and shows a waiting note instead.
+function showMapCleared(model) {
+  if (!mapClearedEl) return;
+  const next = model.nextMap | 0;
+  mcSubEl.textContent = `Path cleared! Advancing to map ${next}.`;
+  const guest = !!model.readOnly;
+  mcNextBtn.style.display = guest ? "none" : "";
+  mcNextBtn.textContent = `Go to map ${next} ▶`;
+  mcWaitEl.style.display = guest ? "" : "none";
+  if (mapClearedEl.style.display !== "flex") mapClearedEl.style.display = "flex";
+}
+
+function hideMapCleared() {
+  if (mapClearedEl && mapClearedEl.style.display !== "none") mapClearedEl.style.display = "none";
+}
+
 // Rebuilding these buttons every frame (the dock model is pushed each tick)
 // would swap each <button> out from under the pointer between mousedown and
 // mouseup, so the click never lands — the element under the cursor at release
@@ -268,6 +296,24 @@ function buildGameOver() {
       el("div", { class: "td-row td-actions" }, [
         el("button", { class: "td-btn td-primary", text: "Play again", on: { click: () => api.onRestart?.() } }),
       ]),
+    ]),
+  ]);
+}
+
+function buildMapCleared() {
+  mcSubEl = el("p", { class: "td-mc-sub" });
+  mcNextBtn = el("button", {
+    class: "td-btn td-primary td-mc-next",
+    text: "Go to next map ▶",
+    on: { click: () => api.onAdvanceMap?.() },
+  });
+  mcWaitEl = el("p", { class: "td-mc-wait", text: "Waiting for the host to continue…", style: { display: "none" } });
+  mapClearedEl = el("div", { id: "td-mapcleared", style: { display: "none" } }, [
+    el("div", { class: "td-mc-card" }, [
+      el("div", { class: "td-mc-badge", text: "✓" }),
+      el("h1", { text: "Path cleared!" }),
+      mcSubEl,
+      el("div", { class: "td-row td-actions" }, [mcNextBtn, mcWaitEl]),
     ]),
   ]);
 }
@@ -418,6 +464,47 @@ function injectStyles() {
     }
     #td-gameover .td-btn:hover { background: #353541; }
     #td-gameover .td-primary { background: #2a4a32; border-color: #3f6b4a; }
+
+    /* — Between-maps "path cleared" popup — celebratory, host-gated — */
+    #td-mapcleared {
+      position: fixed; inset: 0; z-index: 22;
+      display: none; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.6); backdrop-filter: blur(2px);
+      color: #eee; font-family: monospace;
+    }
+    #td-mapcleared .td-mc-card {
+      background: var(--sb-card-bg, #16161e); border: 1px solid #3f6b4a;
+      border-radius: var(--sb-card-radius, 8px); padding: 26px 34px; text-align: center;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5), 0 0 40px rgba(143,230,160,0.18);
+      min-width: 300px; animation: td-mc-pop 0.32s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+    }
+    #td-mapcleared .td-mc-badge {
+      width: 56px; height: 56px; margin: 0 auto 12px; border-radius: 50%;
+      background: #2a4a32; border: 2px solid #8fe6a0; color: #8fe6a0;
+      font-size: 30px; line-height: 54px; font-weight: bold;
+      animation: td-mc-badge 1.6s ease-in-out infinite;
+    }
+    #td-mapcleared h1 { margin: 0 0 8px; font-size: 22px; letter-spacing: 1px; color: #8fe6a0; }
+    #td-mapcleared p { margin: 6px 0; }
+    #td-mapcleared .td-mc-wait { color: var(--sb-text-muted, #8a8a96); font-style: italic; }
+    #td-mapcleared .td-row { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+    #td-mapcleared .td-btn {
+      background: #2a4a32; color: #eee; border: 1px solid #3f6b4a;
+      padding: 10px 18px; border-radius: var(--sb-surface-radius); cursor: pointer;
+      font-family: inherit; font-size: 13px; font-weight: bold;
+    }
+    #td-mapcleared .td-btn:hover { background: #335a3d; }
+    @keyframes td-mc-pop {
+      from { opacity: 0; transform: scale(0.8) translateY(8px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    @keyframes td-mc-badge {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(143,230,160,0.5); }
+      50%      { transform: scale(1.08); box-shadow: 0 0 0 10px rgba(143,230,160,0); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #td-mapcleared .td-mc-card, #td-mapcleared .td-mc-badge { animation: none; }
+    }
   `;
   document.head.appendChild(style);
 }
@@ -427,6 +514,7 @@ export function _resetTdHudForTesting() {
   if (root?.parentNode) root.parentNode.removeChild(root);
   if (dock?.parentNode) dock.parentNode.removeChild(dock);
   if (gameOver?.parentNode) gameOver.parentNode.removeChild(gameOver);
+  if (mapClearedEl?.parentNode) mapClearedEl.parentNode.removeChild(mapClearedEl);
   reviveSig = "";
-  root = null; dock = null; gameOver = null; installed = false; api = {};
+  root = null; dock = null; gameOver = null; mapClearedEl = null; installed = false; api = {};
 }

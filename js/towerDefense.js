@@ -103,10 +103,11 @@ const HERO_NAMES = ["Ninja", "Barbarian", "Bombardier", "Knight"];
 
 // — State ————————————————————————————————————————————————————————————————
 let getState = () => null;
-let phase = "idle";               // idle | build | wave | gameover
+let phase = "idle";               // idle | build | wave | intermission | gameover
 let wave = 0;                     // cumulative across maps — drives the tier ramp
 let mapIndex = 0;                 // current map (0-based); harder each step
 let waveInMap = 0;                // waves cleared on the current map
+let pendingMapIndex = null;       // next map, queued during intermission until advanced
 let buildTimer = 0;
 let score = 0;
 let highScore = 0;
@@ -166,6 +167,7 @@ export function installTowerDefense(stateGetter) {
     onSwitch: switchHero,
     onShop: openTdShop,
     onRestart: restartRun,
+    onAdvanceMap: advanceToNextMap,
   });
   window.addEventListener("keydown", onKey);
   installDebugHook();
@@ -199,6 +201,7 @@ export async function startTowerDefense() {
     recruitedCount = 0;
     mapIndex = 0;
     waveInMap = 0;
+    pendingMapIndex = null;
     wave = 0;
     score = 0;
     combo = 0;
@@ -423,15 +426,47 @@ function clearWave() {
   tdEarn(STIPEND_BASE + wave * STIPEND_PER_WAVE);
   waveInMap += 1;
   if (waveInMap >= WAVES_PER_MAP) {
-    // Map cleared — advance to a fresh, harder map. loadMap rebuilds the zone
-    // and relocates + heals the squad; safe here since the wave is fully clear.
-    waveInMap = 0;
-    showToast(`Map ${mapIndex + 2}`, "hint");
-    loadMap(mapIndex + 1);
+    // Map cleared — hold on a "path cleared" intermission rather than yanking
+    // the squad onto the next map. The host (or solo player) advances on demand
+    // via the dock's "Next map" button; in co-op, guests wait for the host.
+    enterIntermission();
+    return;
   }
   // Obstacles are placed once at map load and stay fixed for the map's waves,
   // so there's nothing to reveal between waves on the same map.
   enterBuild();
+}
+
+// Map fully cleared: freeze the run on the cleared board and raise the "path
+// cleared" popup (driven from the HUD model, so guests see it too). The next
+// map is queued, loaded only when advanceToNextMap fires.
+function enterIntermission() {
+  phase = "intermission";
+  pendingMapIndex = mapIndex + 1;
+  // The phase flip makes maybeBroadcastTdState push immediately, so a co-op
+  // guest's popup comes up in lock-step with the host's.
+}
+
+// Host/solo: leave the intermission and build the queued map. Relocates + heals
+// the squad onto the new track (loadMap) and re-arms the build phase. Guests
+// can't trigger this — they follow the host's broadcast back to "build".
+let advancing = false;
+async function advanceToNextMap() {
+  if (phase !== "intermission" || advancing) return;
+  if (getNetRole() === "guest") return;
+  advancing = true;                 // guard re-entry across loadMap's await
+  const next = pendingMapIndex == null ? mapIndex + 1 : pendingMapIndex;
+  pendingMapIndex = null;
+  waveInMap = 0;
+  try {
+    await loadMap(next);
+    enterBuild();
+  } finally {
+    advancing = false;
+  }
+  // Push the fresh map/phase to guests at once so their popup clears and their
+  // mirror repaints without waiting on the throttled resend.
+  if (getNetRole() === "host") broadcastHostEvent("tdState", { model: buildModel(getState()) });
 }
 
 let gameOverTitle = "";
@@ -547,7 +582,9 @@ export function tickTowerDefense(dt, frame) {
   if (!state?.zone) return;
   const paused = isOverlayOpen();
 
-  if (!paused && phase !== "gameover") {
+  // Game over and the between-maps intermission both freeze the sim: the run is
+  // waiting on the player (restart / advance), not ticking.
+  if (!paused && phase !== "gameover" && phase !== "intermission") {
     simulate(state, dt);
   }
   // Each player's camera follows the hero they drive (during build to
@@ -757,11 +794,21 @@ function buildModel(state) {
     buildHint: "Hold the line — obstacles are closing in",
     revives,
     gameOverTitle,
+    // Between-maps intermission: the HUD raises the "path cleared" popup off
+    // this flag, with a host-only "Next map" button (guests get readOnly, so
+    // they see a "waiting for host" note instead).
+    mapCleared: phase === "intermission",
+    clearedMap: mapIndex + 1,
+    nextMap: mapIndex + 2,
   };
 }
 
 function phaseLabel() {
-  return phase === "build" ? "Build" : phase === "wave" ? "Wave" : phase === "gameover" ? "Defeated" : "—";
+  return phase === "build" ? "Build"
+    : phase === "wave" ? "Wave"
+    : phase === "intermission" ? "Cleared"
+    : phase === "gameover" ? "Defeated"
+    : "—";
 }
 
 // — Input ————————————————————————————————————————————————————————————————
@@ -772,7 +819,7 @@ function phaseLabel() {
 function onKey(e) {
   if (!isTowerDefenseMode()) return;
   if (e.repeat) return;
-  if (phase === "gameover" || isOverlayOpen()) return;
+  if (phase === "gameover" || phase === "intermission" || isOverlayOpen()) return;
   const code = e.code;
   const state = getState();
   if (!state) return;
@@ -878,6 +925,7 @@ function installDebugHook() {
       for (const e of getEnemies(state.zone)) e._dying = true;
     },
     win: () => clearWave(),
+    advance: () => advanceToNextMap(),
     lose: () => gameOver(),
   };
 }

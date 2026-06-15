@@ -2,8 +2,8 @@
 // driven via the ?mode=td deep link. Asserts the whole loop wires up: the
 // board + squad boot with a visible sand path, the build→wave→clear cycle
 // runs, enemies spawn and march, kills score + bank gold, off-path obstacles
-// are placed once at map load and stay fixed across waves, clearing the map's wave quota advances to a
-// fresh harder map, hero switching cycles, and a leak ends the run — all with
+// are placed once at map load and stay fixed across waves, clearing the map's wave quota holds on a
+// "path cleared" intermission until the host advances to the next map, hero switching cycles, and a leak ends the run — all with
 // zero uncaught page exceptions. Self-skips when Chrome isn't installed.
 
 import { test } from "node:test";
@@ -78,9 +78,20 @@ test("tower defense boots, runs a wave, scores kills, and ends on a leak", async
   assert.equal(after.waveInMap, 1, "one wave cleared on this map");
   assert.equal(await evalExpr(s, "window.td.maze().revealed"), obstaclesAtBoot, "obstacles stay fixed between waves on the same map");
 
-  // — Clearing the map's wave quota advances to a fresh, harder map ————————
+  // — Clearing the map's wave quota holds on the "path cleared" intermission ——
   await evalExpr(s, "window.td.win(); window.td.win();"); // reach WAVES_PER_MAP clears
+  await waitFor(s, "window.td.state().phase === 'intermission'", { timeoutMs: 8000 });
+  assert.equal(await evalExpr(s, "window.td.state().mapIndex"), 0, "still on map 0 until advanced");
+  await waitFor(s, "getComputedStyle(document.getElementById('td-mapcleared')).display !== 'none'");
+  assert.ok(await evalExpr(s, "!!document.querySelector('#td-mapcleared .td-mc-next')"), "host sees the Next map button");
+
+  // — Advancing (the host's button) loads the next map ——————————————————————
+  await evalExpr(s, "window.td.advance()");
   await waitFor(s, "window.td.state().mapIndex === 1", { timeoutMs: 8000 });
+  await waitFor(s, "window.td.state().phase === 'build'", { timeoutMs: 4000 });
+  // The popup is dismissed by the HUD on the next frame once the phase leaves
+  // intermission, so wait for it rather than checking the same tick.
+  await waitFor(s, "getComputedStyle(document.getElementById('td-mapcleared')).display === 'none'", { timeoutMs: 4000 });
   assert.ok(await evalExpr(s, "window.td.sandCount() > 0"), "the new map paints a fresh sand path");
 
   // — Hero switching cycles the active slot ——————————————————————————————
