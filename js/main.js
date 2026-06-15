@@ -85,7 +85,7 @@ import {
   installPvpController, pvpGateInput, tickPvpFrame,
 } from "./pvpController.js";
 import { installOnlineDeathmatch, tickHostFrame as tickOnlineDeathmatch } from "./onlineDeathmatch.js";
-import { installTowerDefense, startTowerDefense, isTowerDefenseUrl, tickTowerDefense } from "./towerDefense.js";
+import { installTowerDefense, startTowerDefense, tickTowerDefense } from "./towerDefense.js";
 
 // Live game state. Module-level so switchRole's state-handlers (and the
 // beforeunload listener / window.save shim) can read and mutate it
@@ -348,10 +348,11 @@ async function main() {
     setRuntimeRole("offline");
   }
 
-  // ?mode=td deep-link: boot straight into a Tower Defense run (offline only —
-  // never combines with a host/guest session). Replaces the loaded zone +
-  // player with the TD board + squad; the loop branch below drives it.
-  if (getRuntimeRole() === "offline" && isTowerDefenseUrl()) {
+  // This is a Tower Defense game: the offline boot always starts a TD run
+  // (online co-op TD is launched from the party panel after hosting/joining,
+  // which sets the host role above and skips this branch). Replaces the loaded
+  // zone + player with the TD board + squad; the loop branch below drives it.
+  if (getRuntimeRole() === "offline") {
     await startTowerDefense();
   }
 
