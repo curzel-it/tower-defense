@@ -118,7 +118,13 @@ export function defaultColumn(index) {
 export function resolveSkinColumn(player) {
   if (!player) return HERO_BASE_COLUMN;
   const index = player.index | 0;
-  if (isTowerDefenseMode()) return defaultColumn(index);
+  // In Tower Defense each squad slot can wear its own owned skin; a slot with
+  // no skin selected falls back to its distinct per-index column. (Session-
+  // synced skins by playerId are a story/co-op concern, not used here.)
+  if (isTowerDefenseMode()) {
+    const skin = byId.get(getSelected(index));
+    return skin && skin.column != null ? skin.column : defaultColumn(index);
+  }
   const id = sessionSkinFor(player.playerId) ?? getSelected(index);
   const skin = byId.get(id);
   if (!skin || skin.column == null) return defaultColumn(index);

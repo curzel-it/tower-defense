@@ -10,6 +10,7 @@ import { playSfx } from "./audio.js";
 import { APP_VERSION } from "./constants.js";
 import { clearProgress } from "./save.js";
 import { isCreativeMode } from "./creativeMode.js";
+import { openSkins } from "./skinsPanel.js";
 import { matchesAction } from "./keyBindings.js";
 import { glyphForAction } from "./inputGlyphs.js";
 import { initKeyBindingsScreen, renderControlsList, resetCaptures, consumeMenuKeydown } from "./keyBindingsScreen.js";
@@ -76,6 +77,7 @@ export function installMenu(stateGetter) {
         <button id="menu-resume">Resume (Esc)</button>
         <button id="menu-open-multiplayer">Multiplayer</button>
         <button id="menu-open-account">Account</button>
+        <button id="menu-open-skins">Skins</button>
         <button id="menu-open-settings">Settings</button>
         <button id="menu-open-creative" data-creative-only>Creative tools…</button>
         <button id="menu-open-credits">Credits</button>
@@ -353,6 +355,7 @@ function bindWidgets() {
     applyCreativeModeVisibility();
   });
   syncAccountLabel(getUser());
+  root.querySelector("#menu-open-skins").addEventListener("click", () => { closeMenu(); openSkins(); });
   root.querySelector("#menu-open-settings").addEventListener("click", () => showScreen("settings"));
   const fullscreenBtn = root.querySelector("#menu-fullscreen");
   if (!isFullscreenSupported()) {

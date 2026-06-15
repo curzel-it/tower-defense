@@ -26,11 +26,12 @@ The Stripe/account/store stack (`storeBoot.js`, `realMoneyShop.js`,
 server `paymentsRoutes.js`/`stripeWebhook.js`) **stays in place** — nothing
 removed during the fork cleanup.
 
-> **Follow-up:** there's currently no *entry point* to buy/equip skins in the
-> TD build — the in-run shop excludes cosmetics (`tdShopStock.js`) and the
-> inventory screen (which held the skin slot) was removed in #1. The infra is
-> ready; a small skins picker still needs to be surfaced (e.g. an account-panel
-> "Skins" tab, persistent across runs).
+A **Skins panel** (`skinsPanel.js`) is now reachable from the pause menu: a grid
+of skins with hero previews, **Equip** for owned ones (applies to the active
+squad slot), and **real-money Buy** for the rest (Stripe Checkout via
+`realMoneyShop.startCheckout`; offline/native shows them locked). Skins are
+persistent (they live outside the transient TD save), and `skins.resolveSkinColumn`
+now renders the equipped skin in TD (it previously forced the default).
 
 ## 3. Multiplayer menu: co-op only (no PvP) — ✅ PvP removed (co-op→TD = follow-up)
 
