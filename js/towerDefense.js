@@ -74,10 +74,12 @@ import { refreshTouchActions } from "./touch.js";
 import {
   installTdHud, showTdHud, hideTdHud, updateTdHud, showTdGameOver,
 } from "./tdHud.js";
+import { firstMapId, nextMapId, mapById, waveGoalFor, difficultyFor } from "./tdMaps.js";
+import { recordMapWin, recordRoundReached } from "./tdProgress.js";
+import { installMapSelect, openMapSelect, closeMapSelect, isMapSelectOpen } from "./mapSelect.js";
 
 // — Tuning ————————————————————————————————————————————————————————————————
 const START_GOLD = 150;           // enough to recruit a third hero turn 1
-const WAVES_PER_MAP = 3;          // waves cleared on a map before it changes
 const BUILD_TIME = 10;            // seconds of build phase before auto-start
 const EARLY_BONUS_PER_SEC = 2;    // gold for calling the wave early, per second saved
 const STIPEND_BASE = 40;          // per-wave starting income
@@ -104,10 +106,10 @@ const HERO_NAMES = ["Ninja", "Barbarian", "Bombardier", "Knight"];
 // — State ————————————————————————————————————————————————————————————————
 let getState = () => null;
 let phase = "idle";               // idle | build | wave | intermission | gameover
-let wave = 0;                     // cumulative across maps — drives the tier ramp
-let mapIndex = 0;                 // current map (0-based); harder each step
-let waveInMap = 0;                // waves cleared on the current map
-let pendingMapIndex = null;       // next map, queued during intermission until advanced
+let wave = 0;                     // cumulative across maps — score/combo continuity
+let currentMapId = null;          // the roster map being played (tdMaps.js)
+let round = 0;                    // round within the current map (1-based; resets per map)
+let pendingMapId = null;          // next map, queued during intermission until advanced
 let buildTimer = 0;
 let score = 0;
 let highScore = 0;
@@ -169,6 +171,9 @@ export function installTowerDefense(stateGetter) {
     onRestart: restartRun,
     onAdvanceMap: advanceToNextMap,
   });
+  // The Bloons-style map picker is the front screen: choosing a map starts a run
+  // on it. Pure presenter — it calls back here, never imports the controller.
+  installMapSelect({ onStart: (mapId) => startTowerDefense(mapId) });
   window.addEventListener("keydown", onKey);
   installDebugHook();
 }
@@ -178,9 +183,11 @@ export function isTowerDefenseBooting() { return booting; }
 // Boot a fresh run: switch mode, load the board, spawn the squad, arm the
 // build phase. Called from main's boot path (offline + ?mode=td) and by the
 // party panel's Tower Defense button.
-export async function startTowerDefense() {
+export async function startTowerDefense(mapId = firstMapId()) {
   const state = getState();
   if (!state) return;
+  // Picking from the map-select closes it; a fresh run starts on the chosen map.
+  closeMapSelect();
   booting = true;
   try {
     setGameMode(GAME_MODE.td);
@@ -199,9 +206,9 @@ export async function startTowerDefense() {
     tdEarn(START_GOLD);
     resetHeroSwitch(localPlayerCount());
     recruitedCount = 0;
-    mapIndex = 0;
-    waveInMap = 0;
-    pendingMapIndex = null;
+    currentMapId = mapById(mapId) ? mapId : firstMapId();
+    round = 0;
+    pendingMapId = null;
     wave = 0;
     score = 0;
     combo = 0;
@@ -209,9 +216,9 @@ export async function startTowerDefense() {
     lives = VILLAGE_LIVES;
     highScore = getValue(HIGH_SCORE_KEY) | 0;
 
-    // Build the first map (zone + sand path + path-only field) then spawn the
+    // Build the chosen map (zone + sand path + path-only field) then spawn the
     // squad onto its track.
-    await loadMap(0);
+    await loadMap(currentMapId);
     spawnSquad(state);
     // Re-derive the split-screen slices + per-slice cameras for the squad size
     // (reapplyAutoZoom's onApply calls recomputeSlices). Single-player stays a
@@ -234,18 +241,19 @@ export async function startTowerDefense() {
   }
 }
 
-// Build (or rebuild) the arena for map `idx`: a fresh random sand path, the
-// horde's path-only flow field, and a clean obstacle schedule. Safe to call
-// mid-run at a map boundary — the previous wave is fully cleared (no live
-// enemies to lose) and heroes aren't zone entities, so they survive the swap;
-// living heroes are relocated onto the new track and healed.
-async function loadMap(idx) {
+// Build (or rebuild) the arena for roster map `mapId`: a fresh random sand path
+// (seeded by the map's difficulty), the horde's path-only flow field, and a
+// clean obstacle schedule. Safe to call mid-run at a map boundary — the previous
+// wave is fully cleared (no live enemies to lose) and heroes aren't zone
+// entities, so they survive the swap; living heroes are relocated + healed.
+async function loadMap(mapId) {
   const state = getState();
   if (!state) return;
+  const difficulty = difficultyFor(mapId);
   // The cached base zone stays pristine (loadZone caches it), so generation
   // re-randomises each map. Hero starts come back on the new path.
   const rawZone = { ...(await loadZone(TD_ZONE_ID)) };
-  const map = generateMap(rawZone, idx);
+  const map = generateMap(rawZone, difficulty);
   rawZone.td = { ...(rawZone.td || {}), heroSpawns: map.heroSpawns };
   const zone = buildZone(rawZone);
   state.rawZone = rawZone;
@@ -254,9 +262,9 @@ async function loadMap(idx) {
   resetMaze();
   installMap(map);
   paintPath(zone);                       // sand track visible from the start
-  revealNextObstacles(zone, obstacleBatch(idx)); // off-path obstacles, fixed for the map's life
+  revealNextObstacles(zone, obstacleBatch(difficulty)); // off-path obstacles, fixed for the map's life
   recomputeField(zone, monsterGrid(zone)); // horde locked to the path
-  mapIndex = idx;
+  currentMapId = mapId;
   relocateSquad(state);                  // no-op before the squad exists (boot)
   broadcastTdMap();                      // online: paint the new track on guests
 }
@@ -417,32 +425,39 @@ function startNextWave({ early = false } = {}) {
     if (bonus > 0) { tdEarn(bonus); showToast(`+${bonus} coins — early call`, "hint"); }
   }
   wave += 1;
-  startWave(wave);
+  // tdWaves takes an EFFECTIVE DIFFICULTY: the map's base difficulty + the round
+  // about to play (rounds reset per map), so a fresh map starts easy and later
+  // maps start tougher. `round` counts rounds CLEARED, so the one we're about to
+  // play is round + 1.
+  startWave(difficultyFor(currentMapId) + round + 1);
   phase = "wave";
 }
 
 function clearWave() {
+  round += 1;   // this round is cleared (rounds reset per map; win at waveGoal)
   score += WAVE_CLEAR_BONUS * wave;
   tdEarn(STIPEND_BASE + wave * STIPEND_PER_WAVE);
-  waveInMap += 1;
-  if (waveInMap >= WAVES_PER_MAP) {
-    // Map cleared — hold on a "path cleared" intermission rather than yanking
-    // the squad onto the next map. The host (or solo player) advances on demand
-    // via the dock's "Next map" button; in co-op, guests wait for the host.
+  // Track the deepest round reached on this map (host/solo only — guests mirror).
+  if (getNetRole() !== "guest") recordRoundReached(currentMapId, round);
+  if (round >= waveGoalFor(currentMapId)) {
+    // Map WON — record the win (unlocks tiers) and hold on a "path cleared"
+    // intermission rather than yanking the squad onto the next map.
+    if (getNetRole() !== "guest") recordMapWin(currentMapId, round);
     enterIntermission();
     return;
   }
-  // Obstacles are placed once at map load and stay fixed for the map's waves,
-  // so there's nothing to reveal between waves on the same map.
+  // Obstacles are placed once at map load and stay fixed for the map's rounds,
+  // so there's nothing to reveal between rounds on the same map.
   enterBuild();
 }
 
-// Map fully cleared: freeze the run on the cleared board and raise the "path
-// cleared" popup (driven from the HUD model, so guests see it too). The next
-// map is queued, loaded only when advanceToNextMap fires.
+// Map fully cleared: queue the next roster map (or trigger full victory on the
+// last one) and freeze on the "path cleared" popup (driven from the HUD model,
+// so guests see it too). The next map loads only when advanceToNextMap fires.
 function enterIntermission() {
+  pendingMapId = nextMapId(currentMapId);
+  if (pendingMapId == null) { gameOver("victory"); return; } // last map cleared
   phase = "intermission";
-  pendingMapIndex = mapIndex + 1;
   // The phase flip makes maybeBroadcastTdState push immediately, so a co-op
   // guest's popup comes up in lock-step with the host's.
 }
@@ -454,12 +469,13 @@ let advancing = false;
 async function advanceToNextMap() {
   if (phase !== "intermission" || advancing) return;
   if (getNetRole() === "guest") return;
+  const next = pendingMapId ?? nextMapId(currentMapId);
+  if (next == null) return;         // last map — victory, nothing to advance to
   advancing = true;                 // guard re-entry across loadMap's await
-  const next = pendingMapIndex == null ? mapIndex + 1 : pendingMapIndex;
-  pendingMapIndex = null;
-  waveInMap = 0;
+  pendingMapId = null;
+  round = 0;
   try {
-    await loadMap(next);
+    await loadMap(next);            // sets currentMapId + relocates/heals squad
     enterBuild();
   } finally {
     advancing = false;
@@ -473,10 +489,15 @@ let gameOverTitle = "";
 function gameOver(reason = "squad") {
   if (phase === "gameover") return;
   phase = "gameover";
+  // Persist the deepest round reached on this map (host/solo) for the
+  // map-select "best" badge — even a loss counts.
+  if (getNetRole() !== "guest") recordRoundReached(currentMapId, round);
   const isNewBest = score > highScore;
   if (isNewBest) { highScore = score; setValue(HIGH_SCORE_KEY, score | 0); }
-  gameOverTitle = reason === "village" ? "Village overrun" : "Squad defeated";
-  showTdGameOver({ wave, score, highScore, isNewBest, title: gameOverTitle });
+  gameOverTitle = reason === "victory" ? "Victory — all maps cleared!"
+    : reason === "village" ? "Village overrun"
+    : "Squad defeated";
+  showTdGameOver({ wave, score, highScore, isNewBest, title: gameOverTitle, victory: reason === "victory" });
   // Push the final state so guests swap their HUD for the defeat card.
   if (getNetRole() === "host") broadcastHostEvent("tdState", { model: buildModel(getState()) });
 }
@@ -771,7 +792,9 @@ function buildModel(state) {
   const active = activeHero(state);
   return {
     wave,
-    map: mapIndex + 1,
+    mapName: mapById(currentMapId)?.name || "—",
+    round,
+    waveGoal: waveGoalFor(currentMapId),
     phase: phaseLabel(),
     score,
     highScore,
@@ -798,8 +821,8 @@ function buildModel(state) {
     // this flag, with a host-only "Next map" button (guests get readOnly, so
     // they see a "waiting for host" note instead).
     mapCleared: phase === "intermission",
-    clearedMap: mapIndex + 1,
-    nextMap: mapIndex + 2,
+    clearedMap: mapById(currentMapId)?.name || "",
+    nextMap: pendingMapId ? (mapById(pendingMapId)?.name || "") : "",
   };
 }
 
@@ -859,13 +882,16 @@ function onKey(e) {
 }
 
 function isOverlayOpen() {
-  return isMenuOpen() || isDialogueOpen() || isPartyPanelOpen() || isAccountPanelOpen() || isShopOpen();
+  return isMenuOpen() || isDialogueOpen() || isPartyPanelOpen() || isAccountPanelOpen()
+    || isShopOpen() || isMapSelectOpen();
 }
 
 // — Restart ——————————————————————————————————————————————————————————————
+// "Play again" from the game-over card returns to the map picker rather than
+// silently restarting the same map — the player chooses where to go next.
 function restartRun() {
   hideTdHud();
-  startTowerDefense();
+  openMapSelect();
 }
 
 // — Debug hook ————————————————————————————————————————————————————————————
@@ -878,7 +904,7 @@ function installDebugHook() {
     slices: () => sliceCount(),
     ownerSlot: (i) => ownerSlotOf(i | 0),
     startWave: () => startNextWave(),
-    state: () => ({ phase, wave, mapIndex, waveInMap, score, highScore, lives, coins: tdCoins(), combo }),
+    state: () => ({ phase, wave, mapId: currentMapId, round, score, highScore, lives, coins: tdCoins(), combo }),
     coins: (n) => tdEarn(n | 0),
     addWaves: (n) => { wave += (n | 0); },
     enemies: () => { const s = getState(); return s?.zone ? getEnemies(s.zone).length : 0; },
@@ -909,8 +935,9 @@ function installDebugHook() {
       .map((p) => ({ i: p.index | 0, x: p.tileX | 0, y: p.tileY | 0 })),
     maze: () => mazeProgress(),
     revealAll: () => { const s = getState(); return s?.zone ? revealAll(s.zone) : 0; },
-    map: () => ({ mapIndex, waveInMap, wavesPerMap: WAVES_PER_MAP }),
-    nextMap: () => loadMap(mapIndex + 1),
+    map: () => ({ mapId: currentMapId, round, waveGoal: waveGoalFor(currentMapId) }),
+    advance: () => advanceToNextMap(),
+    nextMap: () => { const n = nextMapId(currentMapId); return n ? loadMap(n) : null; },
     sandCount: () => {
       const s = getState();
       if (!s?.zone) return 0;

@@ -37,9 +37,15 @@ test("tower defense boots, runs a wave, scores kills, and ends on a leak", async
 
   await navigate(s, `${servers.appUrl}/play/?mode=td`);
 
-  // — Boot: TD installed + a build phase with a solo 1-hero squad ————————
+  // — Boot: the map picker opens over a (paused) TD run ————————————————————
   await waitFor(s, "!!window.td");
+  await waitFor(s, "!!document.getElementById('td-mapsel-overlay') && getComputedStyle(document.getElementById('td-mapsel-overlay')).display === 'flex'");
+  // Start a run (closes the picker + unpauses the sim) on the first roster map.
+  await evalExpr(s, "window.td.start()");
   await waitFor(s, "window.td.state().phase === 'build'");
+  const firstMap = await evalExpr(s, "window.td.state().mapId");
+  assert.ok(typeof firstMap === "string" && firstMap.length > 0, "run starts on a roster map");
+  assert.equal(await evalExpr(s, "window.td.state().round"), 0, "no rounds cleared yet");
 
   assert.equal(await evalExpr(s, "window.td.squad()"), 1, "solo starts with one hero (the Ninja)");
   assert.ok(await evalExpr(s, "window.td.state().coins > 0"), "starting coins granted");
@@ -50,7 +56,6 @@ test("tower defense boots, runs a wave, scores kills, and ends on a leak", async
   assert.ok(await evalExpr(s, "window.td.sandCount() > 0"), "a sand path is painted at boot");
   const obstaclesAtBoot = await evalExpr(s, "window.td.maze().revealed");
   assert.ok(obstaclesAtBoot > 0, "obstacles are placed once at map load");
-  assert.equal(await evalExpr(s, "window.td.state().mapIndex"), 0, "run starts on map 0");
 
   // — Recruiting grows the squad with a real second hero ———————————————————
   await evalExpr(s, "window.td.coins(500)");
@@ -75,19 +80,19 @@ test("tower defense boots, runs a wave, scores kills, and ends on a leak", async
 
   // — Obstacles are fixed for the map: unchanged after the wave clears ————————
   // (Path-locking + solvability are unit-tested in tests/tdMaze.test.js.)
-  assert.equal(after.waveInMap, 1, "one wave cleared on this map");
+  assert.equal(after.round, 1, "one round cleared on this map");
   assert.equal(await evalExpr(s, "window.td.maze().revealed"), obstaclesAtBoot, "obstacles stay fixed between waves on the same map");
 
-  // — Clearing the map's wave quota holds on the "path cleared" intermission ——
-  await evalExpr(s, "window.td.win(); window.td.win();"); // reach WAVES_PER_MAP clears
-  await waitFor(s, "window.td.state().phase === 'intermission'", { timeoutMs: 8000 });
-  assert.equal(await evalExpr(s, "window.td.state().mapIndex"), 0, "still on map 0 until advanced");
+  // — Clearing the map's wave goal holds on the "path cleared" intermission ——
+  // win() clears one round directly; loop up to the map's waveGoal.
+  await waitFor(s, "(window.td.state().phase !== 'intermission' && window.td.win(), window.td.state().phase === 'intermission')", { timeoutMs: 15000 });
+  assert.equal(await evalExpr(s, "window.td.state().mapId"), firstMap, "still on the same map until advanced");
   await waitFor(s, "getComputedStyle(document.getElementById('td-mapcleared')).display !== 'none'");
   assert.ok(await evalExpr(s, "!!document.querySelector('#td-mapcleared .td-mc-next')"), "host sees the Next map button");
 
-  // — Advancing (the host's button) loads the next map ——————————————————————
+  // — Advancing (the host's button) loads the next roster map ————————————————
   await evalExpr(s, "window.td.advance()");
-  await waitFor(s, "window.td.state().mapIndex === 1", { timeoutMs: 8000 });
+  await waitFor(s, "window.td.state().mapId && window.td.state().mapId !== " + JSON.stringify(firstMap), { timeoutMs: 8000 });
   await waitFor(s, "window.td.state().phase === 'build'", { timeoutMs: 4000 });
   // The popup is dismissed by the HUD on the next frame once the phase leaves
   // intermission, so wait for it rather than checking the same tick.

@@ -85,6 +85,7 @@ import {
 } from "./pvpController.js";
 import { installOnlineDeathmatch, tickHostFrame as tickOnlineDeathmatch } from "./onlineDeathmatch.js";
 import { installTowerDefense, startTowerDefense, tickTowerDefense } from "./towerDefense.js";
+import { openMapSelect } from "./mapSelect.js";
 
 // Live game state. Module-level so switchRole's state-handlers (and the
 // beforeunload listener / window.save shim) can read and mutate it
@@ -346,12 +347,14 @@ async function main() {
     setRuntimeRole("offline");
   }
 
-  // This is a Tower Defense game: the offline boot always starts a TD run
-  // (online co-op TD is launched from the party panel after hosting/joining,
-  // which sets the host role above and skips this branch). Replaces the loaded
-  // zone + player with the TD board + squad; the loop branch below drives it.
+  // This is a Tower Defense game: the offline boot starts a TD run on the first
+  // map, then raises the Bloons-style map picker on top (which pauses the run)
+  // so the player chooses where to play. (Online co-op TD is launched from the
+  // party panel after hosting/joining, which sets the host role above and skips
+  // this branch.)
   if (getRuntimeRole() === "offline") {
     await startTowerDefense();
+    openMapSelect();
   }
 
   startGameLoop((dt) => {
