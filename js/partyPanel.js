@@ -4,13 +4,12 @@
 // stays hidden offline; the dialog works in every role.
 //
 // Four states, picked by role + game mode in renderPanel():
-//   single        — offline & single player: join field + four host
-//                   buttons (online co-op / online pvp / offline co-op /
-//                   offline pvp)
+//   single        — offline & single player: join field + host buttons
+//                   (online co-op / offline co-op) + a solo Tower Defense
+//                   button. (This is a co-op-only game — no PvP.)
 //   hostingOnline — runtime role "host": mode description, invite code +
-//                   copy/link, peer list, and a start-match (online pvp,
-//                   not yet started) / end-session control
-//   hostingOffline— offline & local multi-player (co-op or pvp): mode
+//                   copy/link, peer list, and an end-session control
+//   hostingOffline— offline & local multi-player (co-op): mode
 //                   description, a 2|3|4 player toggle, end-session
 //   guest         — runtime role "guest": mode description + leave
 //
@@ -219,8 +218,7 @@ function buildSingleView() {
   spErrorEl = el("p", { class: "party-error", style: { display: "none" } });
 
   const onlineCoop = hostButton("party-online-coop", "Online co-op", () => onHostOnlineClick("coop"));
-  const onlinePvp = hostButton("party-online-pvp", "Online PvP", () => onHostOnlineClick("pvp"));
-  spOnlineHostBtns = [onlineCoop, onlinePvp];
+  spOnlineHostBtns = [onlineCoop];
 
   return el("div", { class: "party-view", dataset: { view: "single" } }, [
     el("h1", { text: "Multiplayer" }),
@@ -233,9 +231,7 @@ function buildSingleView() {
     el("p", { class: "party-hint", text: "…or host a match:" }),
     el("div", { class: "party-stack" }, [
       onlineCoop,
-      onlinePvp,
       hostButton("party-offline-coop", "Offline co-op", onOfflineCoopClick),
-      hostButton("party-offline-pvp", "Offline PvP", onOfflinePvpClick),
     ]),
     el("p", { class: "party-hint", text: "…or play solo:" }),
     el("div", { class: "party-stack" }, [
@@ -578,16 +574,6 @@ function onOfflineCoopClick() {
   setLocalPlayers(2);
   renderAll();
   showToast("Local co-op on — add players with the 2/3/4 toggle", "longHint");
-}
-
-function onOfflinePvpClick() {
-  // Mirror onOfflineCoopClick: enter at 2 players and keep the panel open on
-  // the hosting-offline view so PvP and co-op present the same 2/3/4 settings.
-  // startPvpMatch sets the mode + player count synchronously before it awaits
-  // the arena travel, so renderAll already sees the pvp view.
-  startPvpMatch(2);
-  renderAll();
-  showToast("Local PvP on — change players with the 2/3/4 toggle", "longHint");
 }
 
 function onTowerDefenseClick() {

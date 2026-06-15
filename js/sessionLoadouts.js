@@ -20,31 +20,18 @@ import { isPvp, isTowerDefenseMode } from "./gameMode.js";
 
 const loadouts = new Map(); // playerId -> { melee, ranged }
 
-// Tower Defense hero archetypes, by 0-based squad slot. These are fixed for
-// the run and resolved purely in memory — TD never reads or writes the saved
-// equipment, so a run can't pollute the real game's loadout. Each slot is a
-// distinct hero (its 0-based index also picks the sprite column, P1..P4) with
-// a real weapon, so recruits play differently rather than being kunai clones:
-//   0 Ninja      — kunai launcher 1160 (ranged, fast  → rooted shooter)
-//   1 Barbarian  — sword 1159          (melee         → charger)
-//   2 Bombardier — cannon 1167         (ranged, heavy → rooted shooter)
-//   3 Knight     — darkblade 1179      (melee         → charger)
-// allyAI keys archetype off the loadout (melee && !ranged === charger), so the
-// two ranged slots hold and shoot while the two melee slots charge. Weapons are
-// chosen to read differently under infinite TD ammo: the Ninja's kunai is a
-// fast 0.15s patter, the Bombardier's cannon a slow 0.5s heavy shell (the
-// AR-15's 0.005s rate would be a firehose without an ammo cap). The display
-// names live next to the squad logic in towerDefense.js (HERO_NAMES) and must
-// stay aligned with this table.
-const TD_HERO_LOADOUTS = [
-  { melee: null, ranged: 1160 },  // Ninja      — kunai launcher
-  { melee: 1159, ranged: null },  // Barbarian  — sword
-  { melee: null, ranged: 1167 },  // Bombardier — cannon
-  { melee: 1179, ranged: null },  // Knight      — darkblade
-];
+// Tower Defense baseline loadout. Every hero starts the same: the kunai
+// launcher (1160), drawing from the squad's SHARED kunai pool (inventory.js
+// folds ammo to one stash in TD). All other weapons — sword, AR-15, cannon,
+// darkblade, … — are UNIQUE goods bought from the in-run shop and equipped by
+// the one hero who buys them (equipment.js stays per-hero; inventory.js makes
+// the item a squad-wide singleton). So heroes stay visually distinct (the
+// 0-based index picks the sprite column + name, see towerDefense.js HERO_NAMES)
+// but their kit diverges through purchases, not a fixed archetype.
+const TD_BASELINE_LOADOUT = { melee: null, ranged: 1160 }; // kunai launcher
 
-function tdHeroLoadout(index) {
-  return TD_HERO_LOADOUTS[index | 0] || TD_HERO_LOADOUTS[0];
+function tdHeroLoadout() {
+  return TD_BASELINE_LOADOUT;
 }
 
 // In PvP everyone fights with at least a melee weapon: a player who walks

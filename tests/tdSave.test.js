@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 // The transient TD save context (storage.js + tdSave.js) and the TD fold rules
-// that make a run's coins shared, but its ammo and gear per-hero — all without
+// that make a run's coins + ammo shared, but its gear per-hero — all without
 // touching the real save. Pure node, no DOM.
 
 const gameMode = await import("../js/gameMode.js");
@@ -57,7 +57,7 @@ test("enterTdSave starts an empty run: no coins, no ammo, no bought gear", () =>
   assert.equal(storage.getValue("player.0.coins"), 1234);
 });
 
-test("TD folds coins to one squad purse but keeps ammo & gear per-hero", () => {
+test("TD folds coins AND ammo to one shared squad stash, but keeps gear per-hero", () => {
   storage._resetStorageForTesting();
   gameMode.setGameMode(gameMode.GAME_MODE.td);
   enterTdSave();
@@ -67,12 +67,13 @@ test("TD folds coins to one squad purse but keeps ammo & gear per-hero", () => {
   assert.equal(wallet.getCoins(0), 100);
   assert.equal(wallet.getCoins(2), 100);
 
-  // Ammo: per-hero — hero 2's rounds aren't hero 0's.
+  // Ammo: SHARED — all heroes draw from one pool (kunais etc.), and a weapon
+  // item bought by any hero is owned squad-wide (→ weapons are unique).
   inventory.addAmmo(7000, 30, 2);
   assert.equal(inventory.getAmmo(7000, 2), 30);
-  assert.equal(inventory.getAmmo(7000, 0), 0);
+  assert.equal(inventory.getAmmo(7000, 0), 30);
 
-  // Gear: per-hero — re-arming hero 2 doesn't touch hero 0.
+  // Gear: per-hero — the one bought weapon is wielded by just the buyer.
   equipment.setEquipped(equipment.SLOT_RANGED, 1162, 2);
   assert.equal(equipment.getEquippedId(equipment.SLOT_RANGED, 2), 1162);
   assert.equal(equipment.getEquippedId(equipment.SLOT_RANGED, 0), null);

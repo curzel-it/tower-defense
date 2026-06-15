@@ -9,7 +9,6 @@ import { getSettings, saveSettings } from "./settings.js";
 import { playSfx } from "./audio.js";
 import { APP_VERSION } from "./constants.js";
 import { clearProgress } from "./save.js";
-import { renderInventoryInto } from "./inventoryScreen.js";
 import { isCreativeMode } from "./creativeMode.js";
 import { matchesAction } from "./keyBindings.js";
 import { glyphForAction } from "./inputGlyphs.js";
@@ -49,7 +48,7 @@ function isAnotherModalOpen() {
 
 let root = null;
 let open = false;
-let screen = "pause"; // "pause" | "settings" | "credits" | "inventory" | "controls" | "creative"
+let screen = "pause"; // "pause" | "settings" | "credits" | "controls" | "creative"
 
 // Optional getter the host wires in at install time. Provides access to
 // the live game state (rawZone + current zone id) without coupling the
@@ -77,7 +76,6 @@ export function installMenu(stateGetter) {
         <button id="menu-resume">Resume (Esc)</button>
         <button id="menu-open-multiplayer">Multiplayer</button>
         <button id="menu-open-account">Account</button>
-        <button id="menu-open-inventory">Inventory &amp; Equipment</button>
         <button id="menu-open-settings">Settings</button>
         <button id="menu-open-creative" data-creative-only>Creative tools…</button>
         <button id="menu-open-credits">Credits</button>
@@ -154,13 +152,6 @@ export function installMenu(stateGetter) {
       <div class="menu-row menu-controls">
         <button id="menu-controls-reset">Reset to defaults</button>
         <button id="menu-controls-back">Back</button>
-      </div>
-    </div>
-    <div class="menu-card" data-screen="inventory">
-      <h1>Inventory</h1>
-      <div id="menu-inventory-body"></div>
-      <div class="menu-row menu-controls">
-        <button id="menu-inventory-back">Back</button>
       </div>
     </div>
     <div class="menu-card" data-screen="credits">
@@ -253,19 +244,6 @@ export function installMenu(stateGetter) {
 
 export function isMenuOpen() { return open; }
 
-// Open the overlay straight on the Inventory screen — the one-tap route from
-// the ammo HUD chip (ammoHud.js). Mirrors openMenu() but lands on inventory
-// instead of the pause root; opening the overlay flips isMenuOpen() true,
-// which the main loop already treats as "pause" for non-hosts.
-export function openInventory() {
-  if (!root || open) return;
-  open = true;
-  root.style.display = "flex";
-  applyRoleVisibility();
-  showScreen("inventory");
-  playSfx("hintReceived", { volume: 0.5 });
-}
-
 // Save export/import are creative-mode-only — they map onto the Rust
 // build's "Save" menu entry (game/src/gameui/game_menu.rs only shows
 // save-related actions when GameMode::Creative). In the regular
@@ -345,7 +323,6 @@ function showScreen(next) {
     card.style.display = card.dataset.screen === next ? "block" : "none";
   });
   if (next === "settings") syncSettingsWidgets();
-  if (next === "inventory") renderInventoryInto(root.querySelector("#menu-inventory-body"));
   if (next === "controls") renderControlsList();
   if (next !== "controls") resetCaptures();
   // Highlight the first item of the now-visible screen for keyboard /
@@ -390,14 +367,12 @@ function bindWidgets() {
   }
   root.querySelector("#menu-open-credits").addEventListener("click", () => showScreen("credits"));
   root.querySelector("#menu-open-creative").addEventListener("click", () => showScreen("creative"));
-  root.querySelector("#menu-open-inventory").addEventListener("click", () => showScreen("inventory"));
   root.querySelector("#menu-settings-back").addEventListener("click", () => showScreen("pause"));
   root.querySelector("#menu-open-controls").addEventListener("click", () => showScreen("controls"));
   root.querySelector("#menu-controls-back").addEventListener("click", () => showScreen("settings"));
   // The Key Bindings screen's own controls (device/player tabs, reset) are
   // wired by initKeyBindingsScreen().
   root.querySelector("#menu-credits-back").addEventListener("click", () => showScreen("pause"));
-  root.querySelector("#menu-inventory-back").addEventListener("click", () => showScreen("pause"));
   root.querySelector("#menu-creative-back").addEventListener("click", () => showScreen("pause"));
   root.querySelector("#menu-export-save").addEventListener("click", exportSave);
   root.querySelector("#menu-import-save").addEventListener("click", importSave);

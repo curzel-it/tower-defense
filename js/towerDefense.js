@@ -78,7 +78,7 @@ import {
 // — Tuning ————————————————————————————————————————————————————————————————
 const START_GOLD = 150;           // enough to recruit a third hero turn 1
 const WAVES_PER_MAP = 3;          // waves cleared on a map before it changes
-const BUILD_TIME = 30;            // seconds of build phase before auto-start
+const BUILD_TIME = 10;            // seconds of build phase before auto-start
 const EARLY_BONUS_PER_SEC = 2;    // gold for calling the wave early, per second saved
 const STIPEND_BASE = 40;          // per-wave starting income
 const STIPEND_PER_WAVE = 10;

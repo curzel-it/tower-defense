@@ -64,11 +64,14 @@ function key(playerIndex, speciesId) {
 // which we deliberately exclude here.
 function effectiveIndex(playerIndex) {
   const idx = playerIndex | 0;
-  // Tower Defense keeps ammo per-hero (each hero loads its own weapon and
-  // burns its own rounds), so it must NOT fold even in local co-op — unlike
-  // the shared coin purse (wallet.js). The transient TD save (tdSave.js)
-  // keeps these counts off the real inventory.
-  if (idx > 0 && isCoopMode() && !isTowerDefenseMode()) return 0;
+  // Tower Defense shares ONE squad stash: ammo (all heroes throw kunais from a
+  // single pool) and item ownership both fold to index 0, like the shared coin
+  // purse (wallet.js). Folding item counts is also what makes weapons UNIQUE —
+  // buying a sword marks it owned squad-wide, so the shop won't sell a second
+  // (shopPurchase.isOwned). Which hero *wields* it stays per-hero (equipment.js,
+  // which deliberately does NOT fold). The transient TD save (tdSave.js) keeps
+  // all of this off the real inventory.
+  if (idx > 0 && (isCoopMode() || isTowerDefenseMode())) return 0;
   return idx;
 }
 
