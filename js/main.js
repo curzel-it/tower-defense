@@ -22,7 +22,7 @@ import { sliceCount, recomputeSlices, getSlices } from "./splitScreen.js";
 import { installHud, updateHud } from "./hud.js";
 import { loadAudio } from "./audio.js";
 import { loadSettings, getSettings, resolveLanguage } from "./settings.js";
-import { installMenu, isMenuOpen } from "./menu.js";
+import { installMenu, isMenuOpen, openMenu } from "./menu.js";
 import { installTransitions, findTeleporterAt, travelTo } from "./transitions.js";
 import { checkPickup } from "./pickups.js";
 import { installMusic, playTrack } from "./music.js";
@@ -86,6 +86,9 @@ import {
 import { installOnlineDeathmatch, tickHostFrame as tickOnlineDeathmatch } from "./onlineDeathmatch.js";
 import { installTowerDefense, startTowerDefense, tickTowerDefense } from "./towerDefense.js";
 import { openMapSelect } from "./mapSelect.js";
+import { openSkins } from "./skinsPanel.js";
+import { openPartyPanel } from "./partyPanel.js";
+import { installHomeScreen, openHome } from "./homeScreen.js";
 
 // Live game state. Module-level so switchRole's state-handlers (and the
 // beforeunload listener / window.save shim) can read and mutate it
@@ -231,6 +234,14 @@ async function main() {
   // barricade placement, input routing, debug hook) but does nothing until a
   // run boots via ?mode=td or the party panel.
   installTowerDefense(() => state);
+  // Home/title screen — the Bloons-style front menu shown at boot, over a paused
+  // run. Its buttons route to the (lazily-installed) panels.
+  installHomeScreen({
+    onPlay: openMapSelect,
+    onCoop: openPartyPanel,
+    onSkins: openSkins,
+    onSettings: openMenu,
+  });
   installAutoZoom(canvas, state.camera, hud.el, () => recomputeSlices(canvas, state));
   // Guests don't own the world, world-mutating logic, or the warp graph
   // — so the simulation modules (mapEditor, interact, shooting/melee,
@@ -348,13 +359,13 @@ async function main() {
   }
 
   // This is a Tower Defense game: the offline boot starts a TD run on the first
-  // map, then raises the Bloons-style map picker on top (which pauses the run)
-  // so the player chooses where to play. (Online co-op TD is launched from the
-  // party panel after hosting/joining, which sets the host role above and skips
-  // this branch.)
+  // map, then raises the home/title screen on top (which pauses the run) — Play
+  // opens the map picker, Co-op/Skins/Settings route elsewhere. (Online co-op TD
+  // is launched from the party panel after hosting/joining, which sets the host
+  // role above and skips this branch.)
   if (getRuntimeRole() === "offline") {
     await startTowerDefense();
-    openMapSelect();
+    openHome();
   }
 
   startGameLoop((dt) => {

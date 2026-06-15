@@ -37,10 +37,13 @@ test("tower defense boots, runs a wave, scores kills, and ends on a leak", async
 
   await navigate(s, `${servers.appUrl}/play/?mode=td`);
 
-  // — Boot: the map picker opens over a (paused) TD run ————————————————————
+  // — Boot: the home screen opens over a (paused) TD run ————————————————————
   await waitFor(s, "!!window.td");
+  await waitFor(s, "!!document.getElementById('td-home') && getComputedStyle(document.getElementById('td-home')).display === 'flex'");
+  // Play → the map picker.
+  await evalExpr(s, "document.querySelector('#td-home .td-home-primary').click()");
   await waitFor(s, "!!document.getElementById('td-mapsel-overlay') && getComputedStyle(document.getElementById('td-mapsel-overlay')).display === 'flex'");
-  // Start a run (closes the picker + unpauses the sim) on the first roster map.
+  // Start a run (dismisses the menus + unpauses the sim) on the first roster map.
   await evalExpr(s, "window.td.start()");
   await waitFor(s, "window.td.state().phase === 'build'");
   const firstMap = await evalExpr(s, "window.td.state().mapId");

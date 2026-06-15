@@ -289,7 +289,7 @@ function activeCard() {
   return root?.querySelector(`.menu-card[data-screen="${screen}"]`);
 }
 
-function openMenu() {
+export function openMenu() {
   open = true;
   // Show + apply role gating before focusing so the first highlight lands
   // on a genuinely visible item.

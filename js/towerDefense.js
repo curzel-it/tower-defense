@@ -77,6 +77,7 @@ import {
 import { firstMapId, nextMapId, mapById, waveGoalFor, difficultyFor } from "./tdMaps.js";
 import { recordMapWin, recordRoundReached } from "./tdProgress.js";
 import { installMapSelect, openMapSelect, closeMapSelect, isMapSelectOpen } from "./mapSelect.js";
+import { openHome, closeHome, isHomeOpen } from "./homeScreen.js";
 
 // — Tuning ————————————————————————————————————————————————————————————————
 const START_GOLD = 150;           // enough to recruit a third hero turn 1
@@ -182,7 +183,7 @@ export function installTowerDefense(stateGetter) {
   });
   // The Bloons-style map picker is the front screen: choosing a map starts a run
   // on it. Pure presenter — it calls back here, never imports the controller.
-  installMapSelect({ onStart: (mapId) => startTowerDefense(mapId) });
+  installMapSelect({ onStart: (mapId) => startTowerDefense(mapId), onBack: openHome });
   window.addEventListener("keydown", onKey);
   installDebugHook();
 }
@@ -195,7 +196,9 @@ export function isTowerDefenseBooting() { return booting; }
 export async function startTowerDefense(mapId = firstMapId()) {
   const state = getState();
   if (!state) return;
-  // Picking from the map-select closes it; a fresh run starts on the chosen map.
+  // Starting a run dismisses the front menus (home + map picker) and begins on
+  // the chosen map.
+  closeHome();
   closeMapSelect();
   booting = true;
   try {
@@ -900,7 +903,7 @@ function onKey(e) {
 
 function isOverlayOpen() {
   return isMenuOpen() || isDialogueOpen() || isPartyPanelOpen() || isAccountPanelOpen()
-    || isShopOpen() || isMapSelectOpen();
+    || isShopOpen() || isMapSelectOpen() || isHomeOpen();
 }
 
 // — Restart ——————————————————————————————————————————————————————————————

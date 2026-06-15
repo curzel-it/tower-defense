@@ -19,9 +19,11 @@ let overlay = null;
 let gridEl = null;
 let installed = false;
 let onStart = () => {};
+let onBack = () => {};
 
 export function installMapSelect(handlers = {}) {
   onStart = handlers.onStart || (() => {});
+  onBack = handlers.onBack || (() => {});
   if (installed || typeof document === "undefined") return;
   installed = true;
   injectStyles();
@@ -33,6 +35,7 @@ export function installMapSelect(handlers = {}) {
     e.preventDefault();
     e.stopImmediatePropagation();
     closeMapSelect();
+    onBack();   // Esc backs out to wherever opened it (the home screen)
   });
 }
 
@@ -59,7 +62,7 @@ function buildOverlay() {
     el("p", { class: "td-mapsel-hint", text: "Choose a map. Finish one to be promoted to the next." }),
     gridEl,
     el("div", { class: "td-mapsel-controls" }, [
-      el("button", { class: "td-mapsel-btn", text: "Cancel", on: { click: closeMapSelect } }),
+      el("button", { class: "td-mapsel-btn", text: "◀ Back", on: { click: () => { closeMapSelect(); onBack(); } } }),
     ]),
   ]);
   overlay = el("div", {
@@ -171,7 +174,7 @@ function injectStyles() {
 // Test seam.
 export function _resetMapSelectForTesting() {
   if (overlay?.parentNode) overlay.parentNode.removeChild(overlay);
-  overlay = null; gridEl = null; installed = false; onStart = () => {};
+  overlay = null; gridEl = null; installed = false; onStart = () => {}; onBack = () => {};
 }
 
 // Re-export so callers that already depend on this screen can read the roster
