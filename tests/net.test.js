@@ -104,7 +104,7 @@ test("connect() sends hello after open", () => {
     op: "hello",
     protocol: PROTOCOL,
     uuid: "11111111-2222-3333-4444-555555555555",
-    client: "sneakbit",
+    client: "towerdefense",
   });
   net.close();
 });
@@ -266,12 +266,12 @@ test("pickServerUrl: ?server= override is ignored on a deployed origin (anti-phi
   console.warn = () => {};
   try {
     assert.equal(
-      pickServerUrl({ hostname: "curzel.it", search: "?server=wss://attacker.example/ws" }),
-      "wss://sneakbit.curzel.it/ws",
+      pickServerUrl({ hostname: "towerdefense.curzel.it", search: "?server=wss://attacker.example/ws" }),
+      "wss://towerdefense.curzel.it/ws",
     );
     assert.equal(
       pickServerUrl({ hostname: "evil.example.com", search: "?server=wss://attacker.example/ws" }),
-      "wss://sneakbit.curzel.it/ws",
+      "wss://towerdefense.curzel.it/ws",
     );
   } finally {
     console.warn = origWarn;
@@ -283,7 +283,7 @@ test("pickServerUrl: default dev URL when local with no override", () => {
 });
 
 test("pickServerUrl: default prod URL when remote with no override", () => {
-  assert.equal(pickServerUrl({ hostname: "curzel.it", search: "" }), "wss://sneakbit.curzel.it/ws");
+  assert.equal(pickServerUrl({ hostname: "towerdefense.curzel.it", search: "" }), "wss://towerdefense.curzel.it/ws");
 });
 
 test("bad JSON over the wire is silently dropped", () => {

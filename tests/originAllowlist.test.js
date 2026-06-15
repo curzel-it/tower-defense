@@ -6,8 +6,7 @@ const { parseAllowedHosts, isOriginAllowed } =
 
 test("default allowlist covers prod and local dev hosts", () => {
   const hosts = parseAllowedHosts(undefined);
-  assert.ok(hosts.includes("curzel.it"));
-  assert.ok(hosts.includes("sneakbit.curzel.it"));
+  assert.ok(hosts.includes("towerdefense.curzel.it"));
   assert.ok(hosts.includes("localhost"));
   assert.ok(hosts.includes("127.0.0.1"));
 });
@@ -32,9 +31,9 @@ test("absent Origin header is allowed (non-browser tooling)", () => {
 
 test("a known origin is allowed regardless of scheme or port", () => {
   const hosts = parseAllowedHosts(undefined);
-  assert.equal(isOriginAllowed("https://curzel.it", hosts), true);
+  assert.equal(isOriginAllowed("https://towerdefense.curzel.it", hosts), true);
   assert.equal(isOriginAllowed("http://localhost:5500", hosts), true);
-  assert.equal(isOriginAllowed("https://sneakbit.curzel.it/", hosts), true);
+  assert.equal(isOriginAllowed("https://towerdefense.curzel.it/", hosts), true);
 });
 
 test("an unknown origin is rejected", () => {

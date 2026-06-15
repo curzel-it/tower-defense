@@ -64,7 +64,6 @@ import { updateVisibleEntities } from "./zoneVisibility.js";
 import { isCoopMode, setCoopMode, setLocalPlayerCount, localPlayerCount } from "./coopMode.js";
 import { showLoadingScreen, bumpLoadingProgress, hideLoadingScreen } from "./loadingScreen.js";
 import { runMigrations } from "./migrations.js";
-import { installMapEditor } from "./mapEditor.js";
 import { bootstrapOnline, onAnyClose } from "./onlineBootstrap.js";
 import { getMirrorZone, getMirrorPlayers, isMirrorReady, isMirrorDead, refreshMirrorEntities } from "./mirrorWorld.js";
 import { tickPredictedSelf, getPredictedSelf } from "./predictedSelf.js";
@@ -256,7 +255,6 @@ async function main() {
   // fast-travel/map-editor listeners attached, so those inputs
   // silently did nothing until the page was reloaded into offline
   // (which itself requires manually clearing ?join= from the URL).
-  installMapEditor(() => state);
   installInteract(() => state);
   installShooting(() => state);
   installMelee(() => state);
@@ -505,19 +503,6 @@ async function main() {
     updateCoinHud();
   });
 
-  // Autoplay bot (opt-in via ?autoplay): the in-page AI that plays the game
-  // for the 24/7 stream. A lazy dynamic import — esbuild code-splitting
-  // (tools/build.mjs) puts the bot + its autoplay-only modules in a separate
-  // chunk that's fetched ONLY when the param is present, so normal players
-  // never download it. Crucially it stays in the SAME module graph as the
-  // engine, so the bot drives the very same input/storage/state singletons
-  // the game reads (a separately-bundled bot would get dead copies). Offline
-  // role only.
-  if (new URLSearchParams(location.search).has("autoplay") && getRuntimeRole() === "offline") {
-    import("./autoplay/bot.js")
-      .then((m) => m.startBot({ getState: () => state }))
-      .catch((err) => console.error("[autoplay] failed to start bot", err));
-  }
 }
 
 let mirrorDeathHandled = false;

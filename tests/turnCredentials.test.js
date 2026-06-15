@@ -89,10 +89,10 @@ test("HTTP route /turn-credentials is wired end-to-end (503 without env)", async
     // path still needs CORS or the console logs a misleading "blocked
     // by CORS policy" alongside the actual 503.
     const res = await fetch(`http://${s.host}:${s.port}/turn-credentials`, {
-      headers: { Origin: "https://curzel.it" },
+      headers: { Origin: "https://towerdefense.curzel.it" },
     });
     assert.equal(res.status, 503);
-    assert.equal(res.headers.get("access-control-allow-origin"), "https://curzel.it");
+    assert.equal(res.headers.get("access-control-allow-origin"), "https://towerdefense.curzel.it");
     // Tooling path: no Origin header → no ACAO header (no browser to
     // confuse). curl/native clients ignore CORS anyway.
     const resNoOrigin = await fetch(`http://${s.host}:${s.port}/turn-credentials`);

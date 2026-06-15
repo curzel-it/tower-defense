@@ -136,9 +136,9 @@ test("/metrics CORS is origin-gated, not wildcard", async () => {
   const { close, base } = await bootServer();
   try {
     const allowed = await fetch(`${base}/metrics`, {
-      headers: { Origin: "https://curzel.it" },
+      headers: { Origin: "https://towerdefense.curzel.it" },
     });
-    assert.equal(allowed.headers.get("access-control-allow-origin"), "https://curzel.it");
+    assert.equal(allowed.headers.get("access-control-allow-origin"), "https://towerdefense.curzel.it");
     const blocked = await fetch(`${base}/metrics`, {
       headers: { Origin: "https://attacker.example" },
     });

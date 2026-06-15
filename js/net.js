@@ -17,10 +17,10 @@ export const PROTOCOL = 1;
 // without a flag-day — only a future bump to 2 starts rejecting old frames.
 export const GAME_FRAME_SCHEMA = 1;
 const DEFAULT_DEV_WS = "ws://localhost:8090/ws";
-const DEFAULT_PROD_WS = "wss://sneakbit.curzel.it/ws";
+const DEFAULT_PROD_WS = "wss://towerdefense.curzel.it/ws";
 const BACKOFF_STEPS_MS = [1000, 2000, 4000, 8000, 16000, 30000];
 const PING_INTERVAL_MS = 20000;
-const CLIENT_TAG = "sneakbit";
+const CLIENT_TAG = "towerdefense";
 
 export function pickServerUrl(loc = typeof location !== "undefined" ? location : null) {
   // ?server=… is a dev-only escape hatch — it lets you point the page
