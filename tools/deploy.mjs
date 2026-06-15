@@ -791,7 +791,7 @@ async function stepHealth(env) {
     `  -H 'Connection: Upgrade' -H 'Upgrade: websocket' ` +
     `  -H 'Sec-WebSocket-Version: 13' ` +
     `  -H 'Sec-WebSocket-Key: ${wsKey}' ` +
-    `  -H 'Origin: https://curzel.it' ` +
+    `  -H 'Origin: https://${SERVER_NAME}' ` +
     `  https://${SERVER_NAME}/ws 2>/dev/null | head -1) ; ` +
     `echo "ws:$ws" && ` +
     `echo "$ws" | grep -q '101 Switching Protocols'`);

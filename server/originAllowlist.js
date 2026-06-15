@@ -9,8 +9,7 @@
 // would only block legitimate tooling without adding real security.
 
 const DEFAULT_HOSTS = [
-  "curzel.it",
-  "sneakbit.curzel.it",
+  "towerdefense.curzel.it",
   "localhost",
   "127.0.0.1",
 ];
