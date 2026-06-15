@@ -38,7 +38,9 @@ function parseSmokeUrl(raw) {
 
 async function openSmoke() {
   const { tls, host, port, path } = parseSmokeUrl(SMOKE_URL);
-  return openWsClient(host, port, path, { tls, origin: "https://curzel.it" });
+  // Send the smoke target's own host as the Origin so the relay's allowlist
+  // accepts it whatever domain we're deployed under.
+  return openWsClient(host, port, path, { tls, origin: `${tls ? "https" : "http"}://${host}` });
 }
 
 async function hello(c, uuid) {
