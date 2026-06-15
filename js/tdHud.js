@@ -30,9 +30,9 @@ let dock = null;       // the build dock (#td-dock)
 let installed = false;
 
 // Status-bar refs.
-let waveEl, phaseEl, goldEl, livesEl, scoreEl;
+let waveEl, phaseEl, goldEl, livesEl, scoreEl, roundEl, mapNameEl;
 // Dock refs.
-let dockLabelEl, dockValEl, progFillEl, startBtn, recruitBtn, switchBtn, shopBtn, hintEl;
+let dockLabelEl, dockValEl, progFillEl, startBtn, recruitBtn, switchBtn, shopBtn, ffBtn, hintEl;
 let reviveWrap;
 let reviveSig = "";   // signature of the rendered revive set (see renderRevives)
 // Game-over refs.
@@ -91,7 +91,8 @@ export function updateTdHud(model) {
   dock.classList.toggle("td-dock-wave", wave);
 
   // — Top status bar (same shape every frame) —————————————————————————————
-  waveEl.textContent = `Wave ${model.wave}`;
+  mapNameEl.textContent = model.mapName || "—";
+  roundEl.textContent = `Round ${model.displayRound ?? 1}/${model.waveGoal ?? "—"}`;
   phaseEl.textContent = model.phase;
   phaseEl.classList.toggle("td-phase-build", build);
   phaseEl.classList.toggle("td-phase-wave", wave);
@@ -137,6 +138,7 @@ export function updateTdHud(model) {
     recruitBtn.style.display = "none";
     switchBtn.style.display = "none";
     shopBtn.style.display = "none";
+    ffBtn.style.display = "none";
     reviveWrap.style.display = "none";
     setTdActionMode(null);
     return;
@@ -155,6 +157,11 @@ export function updateTdHud(model) {
   // buying ammo mid-wave is safe). It stays in the dock on touch too — the slim
   // wave/build strip keeps button pointer-events, so it's still tappable.
   shopBtn.style.display = (build || wave) ? "" : "none";
+  // Fast-forward: available whenever the sim runs; the label shows the multiplier.
+  const spd = model.speed || 1;
+  ffBtn.textContent = `▶▶ ${spd}×`;
+  ffBtn.classList.toggle("is-fast", spd > 1);
+  ffBtn.style.display = (build || wave) ? "" : "none";
 
   // Revives can be bought in any phase (mid-wave at a premium).
   reviveWrap.style.display = model.revives?.length ? "" : "none";
@@ -233,19 +240,23 @@ function renderRevives(revives) {
 
 // — Top status bar — compact, always visible during a run ——————————————————
 function buildStatusBar() {
-  waveEl = el("span", { class: "td-wave" });
+  // Bloons-style readout: the map + big "Round X/Y" on the left, the resource
+  // stats (lives / cash) prominent on the right, score small.
+  mapNameEl = el("span", { class: "td-mapname", text: "—" });
+  roundEl = el("span", { class: "td-round-val", text: "Round 1" });
   phaseEl = el("span", { class: "td-phase" });
+  waveEl = el("span", { class: "td-wave", style: { display: "none" } }); // legacy ref (unused)
   goldEl = el("span", { class: "td-gold-val", text: "0" });
   scoreEl = el("span", { class: "td-score-val", text: "0" });
   livesEl = el("span", { class: "td-lives-val", text: "♥ —" });
 
   root = el("div", { id: "td-hud", style: { display: "none" } }, [
-    el("span", { class: "td-bar-group td-bar-wave" }, [
-      waveEl, el("span", { class: "td-sep", text: "·" }), phaseEl,
+    el("span", { class: "td-bar-group td-bar-round" }, [
+      mapNameEl, el("span", { class: "td-sep", text: "·" }), roundEl, phaseEl,
     ]),
     el("span", { class: "td-bar-group" }, [
       el("span", { class: "td-stat td-stat-lives" }, [livesEl]),
-      el("span", { class: "td-stat" }, [el("span", { class: "td-coin", text: "●" }), " ", goldEl]),
+      el("span", { class: "td-stat td-stat-cash" }, [el("span", { class: "td-coin", text: "●" }), " ", goldEl]),
       el("span", { class: "td-stat td-stat-score" }, [el("span", { class: "td-label", text: "Score " }), scoreEl]),
     ]),
   ]);
@@ -262,11 +273,19 @@ function buildDock() {
     on: { click: () => api.onReady?.() },
   });
 
+  ffBtn = el("button", {
+    class: "td-btn td-ff",
+    text: "▶▶ 1×",
+    title: "Fast-forward",
+    on: { click: () => api.onFastForward?.() },
+  });
+
   const timerRow = el("div", { class: "td-dock-timer" }, [
     dockLabelEl,
     el("div", { class: "td-prog" }, [progFillEl]),
     dockValEl,
     startBtn,
+    ffBtn,
   ]);
 
   recruitBtn = el("button", { class: "td-btn", text: "Recruit hero", on: { click: () => api.onRecruit?.() } });
@@ -336,16 +355,20 @@ function injectStyles() {
       user-select: none;
     }
     #td-hud .td-bar-group { display: flex; align-items: center; gap: 10px; }
-    #td-hud .td-bar-wave { font-weight: bold; letter-spacing: 1px; }
+    #td-hud .td-bar-round { font-weight: bold; letter-spacing: 0.5px; }
+    #td-hud .td-mapname { color: #cfcfe0; }
+    #td-hud .td-round-val { color: #fff; font-size: 15px; letter-spacing: 0.5px; }
     #td-hud .td-phase { padding: 1px 7px; border-radius: var(--sb-surface-radius); font-size: 11px; font-weight: bold; letter-spacing: 1px; }
     #td-hud .td-phase.td-phase-build { color: #0d160f; background: #8fe6a0; }
     #td-hud .td-phase.td-phase-wave { color: #1a0d0d; background: #ff9b6b; }
     #td-hud .td-sep { color: #666; }
     #td-hud .td-stat { display: flex; align-items: center; gap: 4px; }
+    /* Lives + cash are the resources you watch — make them pop. */
+    #td-hud .td-stat-lives, #td-hud .td-stat-cash { font-size: 15px; }
     #td-hud .td-label { color: #8a8a96; }
-    #td-hud .td-coin { color: #ffcf33; font-size: 10px; }
+    #td-hud .td-coin { color: #ffcf33; font-size: 12px; }
     #td-hud .td-gold-val { color: #ffd966; font-weight: bold; }
-    #td-hud .td-score-val { color: #eee; }
+    #td-hud .td-score-val { color: #aaa; font-size: 12px; }
     #td-hud .td-lives-val { color: #ff8a8a; font-weight: bold; }
     #td-hud .td-lives-val.td-lives-low { color: #ff3b3b; }
 
@@ -390,6 +413,8 @@ function injectStyles() {
     #td-dock .td-primary { background: #2a4a32; border-color: #3f6b4a; font-weight: bold; }
     #td-dock .td-primary:hover:not(:disabled) { background: #335a3d; }
     #td-dock .td-revive { background: #4a2a2a; border-color: #6b3f3f; }
+    #td-dock .td-ff { white-space: nowrap; flex: 0 0 auto; min-width: 56px; }
+    #td-dock .td-ff.is-fast { background: #2a4a32; border-color: #3f6b4a; color: #b8f0c4; font-weight: bold; }
     #td-dock .td-shop { background: #3a3320; border-color: #6b5a2f; color: #ffe7a0; font-weight: bold; }
     #td-dock .td-shop:hover:not(:disabled) { background: #4a4128; }
     #td-dock .td-btn:disabled, #td-dock .td-btn.td-disabled { opacity: 0.45; cursor: not-allowed; }

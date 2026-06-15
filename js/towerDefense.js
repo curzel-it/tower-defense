@@ -118,6 +118,14 @@ let comboTimer = 0;
 let lives = VILLAGE_LIVES;
 let recruitedCount = 0;
 let booting = false;
+let tdSpeed = 1;                  // fast-forward multiplier (1×/2×/3×), HUD-toggled
+
+// Cycle the sim speed 1→2→3→1 (the HUD's fast-forward button). Scales only the
+// simulation dt (below), never the render, so the whole run — waves, the build
+// countdown, movement, cooldowns — speeds up together, Bloons-style.
+function cycleSpeed() {
+  tdSpeed = tdSpeed >= 3 ? 1 : tdSpeed + 1;
+}
 
 // — Coin purse ———————————————————————————————————————————————————————————
 // TD's currency is the game's own coins, kept in a single shared squad purse.
@@ -170,6 +178,7 @@ export function installTowerDefense(stateGetter) {
     onShop: openTdShop,
     onRestart: restartRun,
     onAdvanceMap: advanceToNextMap,
+    onFastForward: cycleSpeed,
   });
   // The Bloons-style map picker is the front screen: choosing a map starts a run
   // on it. Pure presenter — it calls back here, never imports the controller.
@@ -206,6 +215,7 @@ export async function startTowerDefense(mapId = firstMapId()) {
     tdEarn(START_GOLD);
     resetHeroSwitch(localPlayerCount());
     recruitedCount = 0;
+    tdSpeed = 1;
     currentMapId = mapById(mapId) ? mapId : firstMapId();
     round = 0;
     pendingMapId = null;
@@ -606,14 +616,17 @@ export function tickTowerDefense(dt, frame) {
   // Game over and the between-maps intermission both freeze the sim: the run is
   // waiting on the player (restart / advance), not ticking.
   if (!paused && phase !== "gameover" && phase !== "intermission") {
-    simulate(state, dt);
+    simulate(state, dt * tdSpeed);   // fast-forward scales the whole sim
   }
   // Each player's camera follows the hero they drive (during build to
   // reposition along the track, during a wave to fight). Solo / online-host =
   // one shared camera; local co-op = one follow-self slice per player.
   followSquadCameras(state);
-  tickBiomeAnimation(frame.biomeAnim, dt);
-  tickEntities(dt);
+  // Animations ride the same fast-forward multiplier so movement + sprite anim
+  // stay in sync (frozen phases hold at 1× — there's nothing to advance).
+  const adt = (phase === "gameover" || phase === "intermission") ? dt : dt * tdSpeed;
+  tickBiomeAnimation(frame.biomeAnim, adt);
+  tickEntities(adt);
   const heroes = livingHeroes(state);
   // TD simulates the whole board, not just what's on camera: the cameras follow
   // the heroes, but off-screen enemies must still take fire and deal damage, and
@@ -794,7 +807,11 @@ function buildModel(state) {
     wave,
     mapName: mapById(currentMapId)?.name || "—",
     round,
+    // The round being played / about to start (round counts CLEARED rounds), for
+    // a Bloons-style "Round X/Y" readout.
+    displayRound: Math.min(round + 1, waveGoalFor(currentMapId)),
     waveGoal: waveGoalFor(currentMapId),
+    speed: tdSpeed,
     phase: phaseLabel(),
     score,
     highScore,
