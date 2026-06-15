@@ -20,6 +20,14 @@ let gridEl = null;
 let installed = false;
 let onStart = () => {};
 let onBack = () => {};
+// Per-open overrides (set by openMapSelect(opts)): a different pick action (the
+// co-op lobby SELECTS a map instead of starting a run) and a different back
+// target (return to the lobby, not the home screen). Null → use the installed
+// defaults above.
+let pickOverride = null;
+let backOverride = null;
+function doPick(mapId) { (pickOverride || onStart)(mapId); }
+function doBack() { (backOverride || onBack)(); }
 
 export function installMapSelect(handlers = {}) {
   onStart = handlers.onStart || (() => {});
@@ -35,13 +43,17 @@ export function installMapSelect(handlers = {}) {
     e.preventDefault();
     e.stopImmediatePropagation();
     closeMapSelect();
-    onBack();   // Esc backs out to wherever opened it (the home screen)
+    doBack();   // Esc backs out to wherever opened it (home, or the co-op lobby)
   });
 }
 
-export function openMapSelect() {
+// opts.onPick(mapId) overrides the pick action for this open (default: start a
+// run); opts.onBack overrides the back target (default: the installed onBack).
+export function openMapSelect(opts = {}) {
   if (!installed) installMapSelect();
   if (!overlay) return;
+  pickOverride = opts.onPick || null;
+  backOverride = opts.onBack || null;
   renderGrid();
   overlay.style.display = "flex";
   focusFirstIn(gridEl);
@@ -62,7 +74,7 @@ function buildOverlay() {
     el("p", { class: "td-mapsel-hint", text: "Choose a map. Finish one to be promoted to the next." }),
     gridEl,
     el("div", { class: "td-mapsel-controls" }, [
-      el("button", { class: "td-mapsel-btn", text: "◀ Back", on: { click: () => { closeMapSelect(); onBack(); } } }),
+      el("button", { class: "td-mapsel-btn", text: "◀ Back", on: { click: () => { closeMapSelect(); doBack(); } } }),
     ]),
   ]);
   overlay = el("div", {
@@ -100,7 +112,7 @@ function mapCard(m) {
     class: `td-mapsel-map${m.unlocked ? "" : " is-locked"}`,
     disabled: m.unlocked ? undefined : true,
     dataset: { mapId: m.id },
-    on: { click: () => { if (m.unlocked) { closeMapSelect(); onStart(m.id); } } },
+    on: { click: () => { if (m.unlocked) { closeMapSelect(); doPick(m.id); } } },
   }, [
     el("span", { class: "td-mapsel-map-name", text: m.name }),
     el("div", { class: "td-mapsel-map-meta" }, meta),
@@ -175,6 +187,7 @@ function injectStyles() {
 export function _resetMapSelectForTesting() {
   if (overlay?.parentNode) overlay.parentNode.removeChild(overlay);
   overlay = null; gridEl = null; installed = false; onStart = () => {}; onBack = () => {};
+  pickOverride = null; backOverride = null;
 }
 
 // Re-export so callers that already depend on this screen can read the roster

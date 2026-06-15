@@ -45,6 +45,7 @@ import { exitPvp } from "./pvpController.js";
 import { startTowerDefense } from "./towerDefense.js";
 import { isPvp, isPvpHostSetup, setPvpHostSetup, isTowerDefenseMode } from "./gameMode.js";
 import { openMapSelect } from "./mapSelect.js";
+import { mapById, firstMapId } from "./tdMaps.js";
 import { el, showOnly } from "./dom.js";
 import { guardTextInput } from "./textInputGuard.js";
 import { makeConfirmControl } from "./confirmControl.js";
@@ -65,6 +66,9 @@ let guestAutoClosedForSlot = null;
 // button is offered. Reset to null whenever we drop back to offline. A
 // deep-link host (?host=1) never sets it — the view defaults to co-op.
 let onlineHostMode = null;
+// The map the host has chosen in the co-op lobby (defaults to the first roster
+// map). Shown in the lobby and passed to startTowerDefense on "Start".
+let lobbyMapId = null;
 
 // View subtrees — built once, toggled by display.
 let views = { single: null, hostingOnline: null, hostingOffline: null, guest: null };
@@ -80,6 +84,8 @@ let hoCodeEl = null;
 let hoCopyBtn = null;
 let hoShareBtn = null;
 let hoPeerList = null;
+let hoMapEl = null;      // chosen-map label in the lobby
+let hoMapRow = null;     // the lobby map row (hidden once a run is live)
 let hoStartBtn = null;
 let hoEndControl = null; // inline-confirm "End session"
 // playerId → { row, nameEl, slotEl } so we can patch peer rows in place
@@ -276,7 +282,9 @@ function buildHostingOnlineView() {
   hoPeerList = el("ul", { class: "party-peer-list" });
   // Start (online pvp, before the match) / End session (otherwise) — exactly
   // one is shown, picked in renderHostingOnlineView.
-  hoStartBtn = el("button", { id: "party-start-match", text: "Choose map & start ▶", on: { click: onStartCoopClick } });
+  hoMapEl = el("span", { class: "party-lobby-map", text: "—" });
+  const hoChangeBtn = el("button", { text: "Change map", on: { click: onChangeMapClick } });
+  hoStartBtn = el("button", { id: "party-start-match", class: "party-start", text: "Start ▶", on: { click: onStartCoopClick } });
   hoEndControl = partyConfirm("End session", endOnlineSession);
 
   return el("div", { class: "party-view", dataset: { view: "hostingOnline" } }, [
@@ -290,6 +298,12 @@ function buildHostingOnlineView() {
     el("p", { class: "party-hint", text: "Friends open Multiplayer, paste this code, and Join. Up to 4 players total." }),
     el("p", { class: "party-hint", text: "Friends in your session:" }),
     hoPeerList,
+    // Lobby map row (host-only): the chosen map + a change button, then Start.
+    (hoMapRow = el("div", { class: "party-row party-lobby-row" }, [
+      el("span", { class: "party-lobby-label", text: "Map:" }),
+      hoMapEl,
+      hoChangeBtn,
+    ])),
     hoStartBtn,
     hoEndControl.root,
   ]);
@@ -306,10 +320,12 @@ function renderHostingOnlineView() {
 
   patchPeerList(getKnownPeers());
 
-  // Lobby vs live: before the host starts a run, offer "Choose map & start";
-  // once the TD run is live, swap to "End session". (No peer gating — a friend
-  // can join a running game and reconcileGuestHeroes hands them a hero.)
+  // Lobby vs live: before the host starts a run, show the map row + "Start";
+  // once the TD run is live, hide them and offer "End session". (No peer gating
+  // — a friend can join a running game and reconcileGuestHeroes hands them a hero.)
   const showStart = !isTowerDefenseMode();
+  hoMapEl.textContent = mapById(lobbyMapId || firstMapId())?.name || "—";
+  hoMapRow.style.display = showStart ? "" : "none";
   hoStartBtn.style.display = showStart ? "" : "none";
   hoEndControl.root.style.display = showStart ? "none" : "";
   if (showStart) hoEndControl.reset();
@@ -559,11 +575,22 @@ function onHostOnlineClick() {
   switchRole("host").catch((e) => console.error("[party] switchRole(host)", e));
 }
 
-// Host's lobby "start": pick a map, which starts the authoritative TD run.
-// Guests already in the session mirror it; late joiners get a hero on the fly.
+// Lobby "Change map": open the picker in SELECT mode — choosing a map just sets
+// the lobby's map (and reopens the lobby), rather than starting a run, so the
+// host can pick a map and still wait for friends. Back returns to the lobby.
+function onChangeMapClick() {
+  closePartyPanel();
+  openMapSelect({
+    onPick: (id) => { lobbyMapId = id; openPartyPanel(); },
+    onBack: openPartyPanel,
+  });
+}
+
+// Lobby "Start": begin the authoritative TD run on the chosen map. Guests
+// already in the session mirror it; late joiners get a hero on the fly.
 function onStartCoopClick() {
   closePartyPanel();
-  openMapSelect();
+  startTowerDefense(lobbyMapId || firstMapId());
 }
 
 function onOfflineCoopClick() {
@@ -724,6 +751,11 @@ function injectStyles() {
       background: #111; border: 1px dashed #555; border-radius: var(--sb-surface-radius);
     }
     .party-peer-list { list-style: none; padding: 0; margin: 4px 0 14px; }
+    .party-lobby-row { gap: 10px; }
+    .party-lobby-label { color: #8a8a96; }
+    .party-lobby-map { font-weight: bold; color: #ffd966; flex: 1; }
+    .party-start { background: #2a4a32; border-color: #3f6b4a; font-weight: bold; }
+    .party-start:hover:not(:disabled) { background: #335a3d; }
     .party-peer {
       display: flex; align-items: center; gap: 8px;
       padding: 6px 10px; margin: 4px 0;
