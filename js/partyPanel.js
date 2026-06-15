@@ -38,11 +38,10 @@ import {
 import { switchRole } from "./switchRole.js";
 import { showToast } from "./toast.js";
 import { isCreativeMode } from "./creativeMode.js";
-import { isCoopMode, localPlayerCount } from "./coopMode.js";
-import { setLocalPlayers } from "./main.js";
+import { isCoopMode, localPlayerCount, setLocalPlayerCount } from "./coopMode.js";
 import { registerMenuSurface, focusFirstIn } from "./menuNav.js";
 import { startMatch as startDeathmatch, exit as exitDeathmatch } from "./onlineDeathmatch.js";
-import { startPvpMatch, exitPvp } from "./pvpController.js";
+import { exitPvp } from "./pvpController.js";
 import { startTowerDefense } from "./towerDefense.js";
 import { isPvp, isPvpHostSetup, setPvpHostSetup } from "./gameMode.js";
 import { el, showOnly } from "./dom.js";
@@ -388,19 +387,17 @@ function renderHostingOfflineView() {
 }
 
 function onCountToggle(n) {
-  if (isPvp()) {
-    // Re-arm the arena with n players (reloads the map, scatters everyone).
-    startPvpMatch(n);
-  } else {
-    setLocalPlayers(n);
-  }
+  // Restart the TD run with n local heroes (one per split-screen player).
+  setLocalPlayerCount(n);
   renderAll();
+  startTowerDefense();
 }
 
 function endOfflineSession() {
-  if (isPvp()) exitPvp();
-  else setLocalPlayers(1);
+  // Back to a solo run.
+  setLocalPlayerCount(1);
   renderAll();
+  startTowerDefense();
 }
 
 // — Guest view ————————————————————————————————————————————————————————————
@@ -558,22 +555,28 @@ function onJoinClick() {
   switchRole("guest", { code: raw }).catch((e) => console.error("[party] switchRole(guest)", e));
 }
 
-function onHostOnlineClick(mode) {
+function onHostOnlineClick() {
   if (isCreativeMode()) {
     showToast("Leave creative mode first.", "hint");
     return;
   }
-  onlineHostMode = mode === "pvp" ? "pvp" : "coop";
-  setPvpHostSetup(onlineHostMode === "pvp");
-  switchRole("host").catch((e) => console.error("[party] switchRole(host)", e));
+  // Co-op only. Become the host, then start the authoritative Tower Defense run
+  // — guests who join with the invite code mirror it (reconcileGuestHeroes adds
+  // each a hero). The panel stays open on the hosting view so the host can share
+  // the code.
+  onlineHostMode = "coop";
+  switchRole("host")
+    .then(() => startTowerDefense())
+    .catch((e) => console.error("[party] host → TD", e));
 }
 
 function onOfflineCoopClick() {
-  // Enter local co-op at 2 players; the hosting-offline view's toggle bumps
-  // to 3/4. Keep the panel open so the player can add more.
-  setLocalPlayers(2);
-  renderAll();
-  showToast("Local co-op on — add players with the 2/3/4 toggle", "longHint");
+  // Local split-screen co-op: start a fresh Tower Defense run with 2 heroes
+  // (one per local player). startTowerDefense reads the local player count to
+  // size the squad. Close the panel — the run takes over the screen.
+  setLocalPlayerCount(2);
+  closePartyPanel();
+  startTowerDefense();
 }
 
 function onTowerDefenseClick() {

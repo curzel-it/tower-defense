@@ -39,11 +39,16 @@ The party panel (`partyPanel.js`) no longer offers PvP — the **Online PvP** an
 co-op / Tower Defense** only. The dormant PvP code paths (deathmatch, local-pvp
 toggle) are now unreachable from the UI.
 
-> **Follow-up:** "Online co-op" currently still hosts an *adventure* world — the
-> boot keystone only made the **offline** path start TD; the online host/guest
-> entry isn't wired to TD yet. So co-op-launches-TD is the remaining piece.
-> (`onlineDeathmatch.js`/`pvpController.js`/`pvpMatch.js` etc. can also be
-> deleted later — pervasive engine guards, tracked with Phase 1b.)
+Co-op now launches Tower Defense: **Online co-op** = become host → start the
+authoritative TD run (guests who join with the code mirror it and get a hero);
+**Offline co-op** / the 2|3|4 toggle = restart TD with that many local heroes.
+(`onlineDeathmatch.js`/`pvpController.js`/`pvpMatch.js` etc. can still be deleted
+later — pervasive engine guards, tracked with Phase 1b.)
+
+> **Polish (UI overhaul):** online co-op has no lobby yet — the host drops
+> straight into the build phase, so a late-joining friend hops into an ongoing
+> run rather than a pre-game lobby + map pick. That's part of the Bloons-style
+> UI pass.
 
 ## 4. Shorten the time between waves → 10s — ✅ done
 
