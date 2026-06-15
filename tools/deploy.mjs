@@ -8,10 +8,10 @@
 //
 // What this does on the server:
 //   - Install nginx + certbot + Node.js (NodeSource 24.x) if missing.
-//   - Create a system user `sneakbit` and /opt/sneakbit-server/.
-//   - Push the server/ tree (index.js, package.json, ...) to /opt/sneakbit-server/.
-//   - Build the client (esbuild -> _site/) and push it to /var/www/sneakbit.
-//   - Write the nginx vhost for sneakbit.curzel.it (static client at /, relay
+//   - Create a system user `towerdefense` and /opt/towerdefense-server/.
+//   - Push the server/ tree (index.js, package.json, ...) to /opt/towerdefense-server/.
+//   - Build the client (esbuild -> _site/) and push it to /var/www/towerdefense.
+//   - Write the nginx vhost for towerdefense.curzel.it (static client at /, relay
 //     backend reverse-proxied on /ws + the JSON endpoints).
 //   - Provision TLS via certbot --nginx (idempotent).
 //   - Restart the service, reload nginx, and health-check the live URLs.
@@ -45,20 +45,29 @@ try {
 // the git checkout live) is one level up.
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-// ---- sneakbit server -------------------------------------------------------
+// ---- tower-defense server --------------------------------------------------
+// This VPS hosts three independent services side by side: restartborgo.it,
+// sneakbit.curzel.it, and this one (towerdefense.curzel.it). Coexistence is by
+// namespacing every host-side resource off the constants below — its own
+// systemd unit, system user, /opt + /var/www dirs, internal bind port, nginx
+// vhost (filename = SERVER_NAME, so it never clobbers a co-tenant's), and its
+// own certbot cert. Nothing here is shared with the other two. See
+// docs/deploy.md.
 
-const APP_NAME = "sneakbit-server";
-const APP_USER = "sneakbit";
+const APP_NAME = "towerdefense-server";
+const APP_USER = "towerdefense";
 const REMOTE_DIR = `/opt/${APP_NAME}`;
 const APP_BIND_HOST = "127.0.0.1";
-const APP_BIND_PORT = 8090;
+// Distinct loopback port per service (sneakbit uses 8090) so the three Node
+// relays never collide on the shared host.
+const APP_BIND_PORT = 8091;
 const APP_BIND = `${APP_BIND_HOST}:${APP_BIND_PORT}`;
-const SERVER_NAME = "sneakbit.curzel.it";
+const SERVER_NAME = "towerdefense.curzel.it";
 
 // Static game client lives here, served by nginx at /. Kept under /var/www
 // (owned by www-data) rather than the Node app dir under /opt — the two halves
 // deploy independently and shouldn't share a tree.
-const WEBROOT = "/var/www/sneakbit";
+const WEBROOT = "/var/www/towerdefense";
 
 // Rollback snapshots, taken just before the destructive client/server pushes.
 // A failed health check restores from these so a broken build never stays
@@ -112,10 +121,11 @@ const SERVER_SYNC_PATHS = [
 // after this bump re-runs the NodeSource setup_24.x step and restarts the unit.
 const NODE_MAJOR = "24";
 
-// /etc/sneakbit-server.env — TURN env vars live here so the secret stays out of
-// the repo. Format is a systemd EnvironmentFile (KEY=value, one per line). When
-// TURN_SECRET / TURN_URLS are unset the relay's /turn-credentials endpoint
-// returns 503 and clients use STUN only.
+// /etc/towerdefense-server.env — TURN env vars live here so the secret stays
+// out of the repo. Format is a systemd EnvironmentFile (KEY=value, one per
+// line). When TURN_SECRET / TURN_URLS are unset the relay's /turn-credentials
+// endpoint returns 503 and clients use STUN only. (coturn itself is shared VPS
+// infra — point TURN_URLS at whichever TURN host is already running.)
 //
 // To enable self-hosted TURN on this VPS:
 //   1. apt install coturn
@@ -125,19 +135,19 @@ const NODE_MAJOR = "24";
 //        fingerprint
 //        use-auth-secret
 //        static-auth-secret=<same as TURN_SECRET below>
-//        realm=sneakbit.curzel.it
+//        realm=towerdefense.curzel.it
 //        # certbot cert for the relay subdomain works fine here:
-//        cert=/etc/letsencrypt/live/sneakbit.curzel.it/fullchain.pem
-//        pkey=/etc/letsencrypt/live/sneakbit.curzel.it/privkey.pem
+//        cert=/etc/letsencrypt/live/towerdefense.curzel.it/fullchain.pem
+//        pkey=/etc/letsencrypt/live/towerdefense.curzel.it/privkey.pem
 //   3. /etc/default/coturn → TURNSERVER_ENABLED=1; systemctl restart coturn
 //   4. ufw allow 3478,5349; ufw allow 49152:65535/udp   (relay range)
-//   5. write /etc/sneakbit-server.env:
+//   5. write /etc/towerdefense-server.env:
 //        TURN_SECRET=<...>
-//        TURN_URLS=turn:sneakbit.curzel.it:3478,turns:sneakbit.curzel.it:5349
-//   6. systemctl restart sneakbit-server
+//        TURN_URLS=turn:towerdefense.curzel.it:3478,turns:towerdefense.curzel.it:5349
+//   6. systemctl restart towerdefense-server
 // The co-tenant nginx vhost is untouched by this — TURN/STUN run on their own
 // ports.
-const TURN_ENV_FILE = "/etc/sneakbit-server.env";
+const TURN_ENV_FILE = "/etc/towerdefense-server.env";
 
 // Server secrets propagated from the local .env into the systemd
 // EnvironmentFile (TURN_ENV_FILE). Local .env is the single source of truth.
@@ -197,7 +207,7 @@ WantedBy=multi-user.target
 
 // nginx vhost. Written HTTP-only first; certbot --nginx rewrites in place to
 // add the TLS server block and the :80 -> :443 redirect.
-const SNEAKBIT_NGINX_HTTP = `# Auto-generated by deploy.mjs. Static client + relay reverse proxy.
+const NGINX_HTTP_VHOST = `# Auto-generated by deploy.mjs. Static client + relay reverse proxy.
 # certbot will rewrite this file to add the TLS server block.
 server {
     listen 80;
@@ -636,7 +646,7 @@ systemctl is-active ${APP_NAME} && echo "  service active after rollback" || ech
 }
 
 async function stepPushServer(env, conn) {
-  console.log("[4] push sneakbit-server tree");
+  console.log(`[4] push ${APP_NAME} tree`);
   if (!existsSync(LOCAL_SERVER_DIR)) die(`local server dir missing: ${LOCAL_SERVER_DIR}`);
   const existing = SERVER_SYNC_PATHS.filter((p) => existsSync(join(LOCAL_SERVER_DIR, p)));
   if (!existing.length) {
@@ -709,7 +719,7 @@ async function stepNginxHttp(env, conn) {
   // stepPushClient hasn't populated it yet on a fresh host.
   await ssh(env, `install -d -o www-data -g www-data ${WEBROOT}`);
   await writeRemoteFile(conn, "/etc/nginx/conf.d/connection_upgrade.conf", NGINX_CONNECTION_UPGRADE_MAP);
-  await writeRemoteFile(conn, `/etc/nginx/sites-available/${SERVER_NAME}`, SNEAKBIT_NGINX_HTTP);
+  await writeRemoteFile(conn, `/etc/nginx/sites-available/${SERVER_NAME}`, NGINX_HTTP_VHOST);
   await ssh(env,
     `ln -sf /etc/nginx/sites-available/${SERVER_NAME} ` +
     `/etc/nginx/sites-enabled/${SERVER_NAME}`);
@@ -728,7 +738,7 @@ async function stepCerts(env) {
 }
 
 async function stepService(env) {
-  console.log("[8] (re)start sneakbit-server");
+  console.log(`[8] (re)start ${APP_NAME}`);
   await ssh(env, `systemctl enable ${APP_NAME} && systemctl restart ${APP_NAME}`);
 }
 
