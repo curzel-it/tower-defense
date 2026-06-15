@@ -1,0 +1,291 @@
+// Auth endpoint handlers. createAuthHandler() wires the db + jwt + passwords
+// + email + rate-limiters into one async dispatcher that index.js calls for
+// every /auth/* request (CORS is applied by the caller, mirroring the
+// /turn-credentials pattern). All responses are JSON.
+//
+// Endpoints:
+//   POST  /auth/register         {email, password, displayName?} -> {token, user}
+//   POST  /auth/login            {email, password}               -> {token, user}
+//   GET    /auth/me              (Bearer)                        -> {user}
+//   PATCH  /auth/me              (Bearer) {displayName?, password?, currentPassword?}
+//   DELETE /auth/me              (Bearer) {password}             -> {ok:true}
+//   POST  /auth/forgot-password  {email}                         -> always 200
+//   POST  /auth/reset-password   {token, password}               -> {token, user}
+
+import { randomBytes, createHash } from "node:crypto";
+import {
+  createUser, findUserByEmail, findUserById, updateUser, deleteUser,
+  createPasswordReset, findPasswordReset, markPasswordResetUsed,
+  invalidateUserResets, pruneStaleResets,
+} from "./db.js";
+import { signToken } from "./jwt.js";
+import { authenticateUser } from "./bearerAuth.js";
+import { hashPassword, verifyPassword } from "./passwords.js";
+import { readJsonBody } from "./httpBody.js";
+import { sendEmail } from "./email.js";
+import { isEditor } from "./editors.js";
+import { createRateLimiter } from "./rateLimitHttp.js";
+import { log } from "./logger.js";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD = 8;
+const MAX_PASSWORD = 200;
+const RESET_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+export function createAuthHandler({ db, env = process.env } = {}) {
+  // Brute-force defense. login/reset are per-IP; forgot is per-IP and
+  // per-email so one address can't be spammed from many IPs (and one IP
+  // can't enumerate many addresses).
+  const loginLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 30 });
+  const resetLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 30 });
+  const forgotIpLimiter = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 20 });
+  const forgotEmailLimiter = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 5 });
+  // Registration runs a scrypt hash, so it's a CPU-cost abuse vector and an
+  // account-spam vector. Per-IP cap, generous enough for a shared NAT.
+  const registerLimiter = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 20 });
+
+  async function handle(req, res) {
+    if (!env.JWT_SECRET) return json(res, 503, { error: "auth_unavailable" });
+    const path = pathOf(req.url);
+    const method = req.method;
+    try {
+      if (method === "POST" && path === "/auth/register") return await register(req, res);
+      if (method === "POST" && path === "/auth/login") return await login(req, res);
+      if (method === "GET" && path === "/auth/me") return await me(req, res);
+      if (method === "PATCH" && path === "/auth/me") return await patchMe(req, res);
+      if (method === "DELETE" && path === "/auth/me") return await deleteMe(req, res);
+      if (method === "POST" && path === "/auth/forgot-password") return await forgot(req, res);
+      if (method === "POST" && path === "/auth/reset-password") return await reset(req, res);
+      return json(res, 404, { error: "not_found" });
+    } catch (err) {
+      if (err?.code === "BODY_TOO_LARGE") return json(res, 413, { error: "too_large" });
+      if (err?.code === "BAD_JSON") return json(res, 400, { error: "bad_json" });
+      log.error("auth.handlerError", { path, err: err?.message || String(err) });
+      return json(res, 500, { error: "server_error" });
+    }
+  }
+
+  // — Handlers ———————————————————————————————————————————————————————————
+
+  async function register(req, res) {
+    if (!registerLimiter.check(clientIp(req))) return json(res, 429, { error: "rate_limited" });
+    const body = await readJsonBody(req);
+    const email = normalizeEmail(body.email);
+    const password = String(body.password ?? "");
+    const displayName = cleanDisplayName(body.displayName);
+    if (!EMAIL_RE.test(email)) return json(res, 400, { error: "invalid_email" });
+    if (!validPassword(password)) return json(res, 400, { error: "weak_password" });
+    if (findUserByEmail(db, email)) return json(res, 409, { error: "email_taken" });
+
+    const id = "usr_" + randomBytes(12).toString("hex");
+    const passwordHash = await hashPassword(password);
+    const now = Date.now();
+    const user = createUser(db, { id, email, passwordHash, displayName, now });
+    return json(res, 201, { token: tokenFor(user, now), user: publicUser(user) });
+  }
+
+  async function login(req, res) {
+    if (!loginLimiter.check(clientIp(req))) return json(res, 429, { error: "rate_limited" });
+    const body = await readJsonBody(req);
+    const email = normalizeEmail(body.email);
+    const password = String(body.password ?? "");
+    const user = findUserByEmail(db, email);
+    // Run a verify even when the user is absent so the response time doesn't
+    // reveal whether the email exists.
+    const ok = user
+      ? await verifyPassword(password, user.password_hash)
+      : await verifyPassword(password, "AAAA$AAAA");
+    if (!user || !ok) return json(res, 401, { error: "invalid_credentials" });
+    return json(res, 200, { token: tokenFor(user), user: publicUser(user) });
+  }
+
+  async function me(req, res) {
+    const user = userFromBearer(req);
+    if (!user) return json(res, 401, { error: "unauthorized" });
+    return json(res, 200, { user: publicUser(user) });
+  }
+
+  async function patchMe(req, res) {
+    const user = userFromBearer(req);
+    if (!user) return json(res, 401, { error: "unauthorized" });
+    const body = await readJsonBody(req);
+    const now = Date.now();
+    const patch = { now };
+
+    if (body.displayName !== undefined) {
+      patch.displayName = cleanDisplayName(body.displayName);
+    }
+    if (body.password !== undefined) {
+      const next = String(body.password);
+      if (!validPassword(next)) return json(res, 400, { error: "weak_password" });
+      const current = String(body.currentPassword ?? "");
+      if (!(await verifyPassword(current, user.password_hash))) {
+        return json(res, 403, { error: "wrong_password" });
+      }
+      patch.passwordHash = await hashPassword(next);
+    }
+    if (patch.displayName === undefined && patch.passwordHash === undefined) {
+      return json(res, 400, { error: "nothing_to_update" });
+    }
+    const updated = updateUser(db, user.id, patch);
+    const out = { user: publicUser(updated) };
+    // A password change stamps password_changed_at = now, retiring the
+    // caller's current token too. Hand back a fresh one (minted with the same
+    // `now`) so the user who just changed their password isn't logged out.
+    if (patch.passwordHash !== undefined) out.token = tokenFor(updated, now);
+    return json(res, 200, out);
+  }
+
+  async function deleteMe(req, res) {
+    const user = userFromBearer(req);
+    if (!user) return json(res, 401, { error: "unauthorized" });
+    // Re-confirm the password so a leaked token alone can't nuke an account.
+    const body = await readJsonBody(req);
+    const password = String(body.password ?? "");
+    if (!(await verifyPassword(password, user.password_hash))) {
+      return json(res, 403, { error: "wrong_password" });
+    }
+    deleteUser(db, user.id); // also drops the cloud save + reset tokens
+    return json(res, 200, { ok: true });
+  }
+
+  async function forgot(req, res) {
+    const ip = clientIp(req);
+    const body = await readJsonBody(req);
+    const email = normalizeEmail(body.email);
+    // Rate-limit, then ALWAYS answer 200 — no account enumeration. We still
+    // do the work (issue + email a token) only when the address exists.
+    const allowed = forgotIpLimiter.check(ip) && (email ? forgotEmailLimiter.check(email) : true);
+    if (allowed && EMAIL_RE.test(email)) {
+      const user = findUserByEmail(db, email);
+      if (user) {
+        pruneStaleResets(db, Date.now()); // opportunistic housekeeping
+        const token = randomBytes(32).toString("hex");
+        const tokenHash = sha256(token);
+        createPasswordReset(db, {
+          tokenHash, userId: user.id, expiresAt: Date.now() + RESET_TTL_MS,
+        });
+        // The account page (/account/) handles the ?reset=<token> deep link.
+        // (The bare site root is the marketing landing — it would silently no-op.)
+        const link = `${baseUrl()}/account/?reset=${token}`;
+        // Fire-and-forget: awaiting the email's network round-trip made the
+        // user-exists path measurably slower than the unknown-email path,
+        // which is an account-enumeration oracle that defeats the always-200
+        // design. Kick the send off in the background and answer immediately.
+        sendEmail({
+          to: user.email,
+          subject: "Reset your SneakBit password",
+          html: `<p>Someone asked to reset your SneakBit password.</p>
+<p><a href="${link}">Click here to choose a new password</a>. This link expires in 1 hour.</p>
+<p>If you didn't request this, you can ignore this email.</p>`,
+          text: `Reset your SneakBit password: ${link} (expires in 1 hour). If you didn't request this, ignore this email.`,
+        }, env).catch((e) => { console.error("[auth] forgot-password sendEmail failed", e); });
+      }
+    }
+    return json(res, 200, { ok: true });
+  }
+
+  async function reset(req, res) {
+    if (!resetLimiter.check(clientIp(req))) return json(res, 429, { error: "rate_limited" });
+    const body = await readJsonBody(req);
+    const token = String(body.token ?? "");
+    const password = String(body.password ?? "");
+    if (!validPassword(password)) return json(res, 400, { error: "weak_password" });
+    const row = findPasswordReset(db, sha256(token));
+    if (!row || row.used_at != null || row.expires_at < Date.now()) {
+      return json(res, 400, { error: "invalid_token" });
+    }
+    const user = findUserById(db, row.user_id);
+    if (!user) return json(res, 400, { error: "invalid_token" });
+    const now = Date.now();
+    const updated = updateUser(db, user.id, { passwordHash: await hashPassword(password), now });
+    markPasswordResetUsed(db, row.token_hash, now);
+    invalidateUserResets(db, user.id, now); // burn any other outstanding links
+    // Sign them straight in — they just proved control of the inbox.
+    return json(res, 200, { token: tokenFor(updated, now), user: publicUser(updated) });
+  }
+
+  // — Helpers ————————————————————————————————————————————————————————————
+
+  function tokenFor(user, now) {
+    return signToken({ sub: user.id }, { secret: env.JWT_SECRET, now });
+  }
+
+  function userFromBearer(req) {
+    return authenticateUser(req, { db, secret: env.JWT_SECRET });
+  }
+
+  function baseUrl() {
+    return (env.APP_BASE_URL || "https://sneakbit.curzel.it").replace(/\/$/, "");
+  }
+
+  return handle;
+}
+
+// — Pure helpers ————————————————————————————————————————————————————————
+
+function json(res, status, obj) {
+  res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(obj) + "\n");
+}
+
+function pathOf(url) {
+  const q = url.indexOf("?");
+  return q === -1 ? url : url.slice(0, q);
+}
+
+function normalizeEmail(email) {
+  return String(email ?? "").trim().toLowerCase();
+}
+
+function cleanDisplayName(name) {
+  if (name == null) return null;
+  const s = String(name).trim().slice(0, 60);
+  return s.length ? s : null;
+}
+
+function validPassword(pw) {
+  return typeof pw === "string" && pw.length >= MIN_PASSWORD && pw.length <= MAX_PASSWORD;
+}
+
+// NOTE: email verification is intentionally deferred. Registration accepts an
+// unverified address, so `email_verified` is always 0 today and `emailVerified`
+// is plumbed through (so a future verify flow needs no client change) but never
+// gated on. It's an optional, additive feature for a single-player game; the
+// only thing an unverified email blocks is forgot-password (which mails the
+// real owner regardless). Revisit if accounts ever gate anything sensitive.
+function publicUser(row) {
+  return {
+    id: row.id,
+    email: row.email,
+    displayName: row.display_name ?? null,
+    emailVerified: !!row.email_verified,
+    createdAt: row.created_at,
+    // Editor allowlist flag — gates the creative-mode world editor UI on the
+    // client. The /editing routes enforce it server-side regardless; this is
+    // purely so the client knows whether to show the tools.
+    editor: isEditor(row.email),
+  };
+}
+
+function clientIp(req) {
+  // Prefer X-Real-IP: nginx sets it to $remote_addr and OVERWRITES any
+  // client-supplied value, so it can't be spoofed. X-Forwarded-For is
+  // $proxy_add_x_forwarded_for — the client's value with the real IP
+  // APPENDED — so the trustworthy hop is the LAST one, never the first
+  // (using the first would let an attacker mint a fresh rate-limit bucket
+  // per request by sending a bogus header). Socket address is the fallback
+  // for direct test/dev connections with no proxy.
+  const real = req.headers?.["x-real-ip"];
+  if (typeof real === "string" && real.trim()) return real.trim();
+  const xff = req.headers?.["x-forwarded-for"];
+  if (typeof xff === "string" && xff.length) {
+    const hops = xff.split(",");
+    return hops[hops.length - 1].trim();
+  }
+  return req.socket?.remoteAddress || "unknown";
+}
+
+function sha256(s) {
+  return createHash("sha256").update(String(s)).digest("hex");
+}

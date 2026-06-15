@@ -1,0 +1,285 @@
+// Mob AI — tile-locked, Gameboy-style stepping.
+//
+// Two movement modes match the original Rust core:
+//   * FindHero chases the player when within vision range; otherwise it
+//     wanders, matching `move_chasing_player`'s fall-through to
+//     `move_around_free` in the Rust core.
+//   * Free just wanders at random.
+//
+// Each mob carries a small `_ai` state with its own step (from→to, with
+// progress 0..1) so its sprite slides smoothly between integer tiles,
+// matching the player's movement model in player.js.
+
+import { getSpecies } from "./species.js";
+import { isWalkable } from "./zone.js";
+import { isCreativeMode } from "./creativeMode.js";
+import { TILE_SIZE } from "./constants.js";
+
+const VISION_TILES = 6;            // chase trigger range (Manhattan)
+const WANDER_PAUSE = 0.9;          // sec idle between wander steps
+// Mirrors Rust config().base_entity_speed = TILE_SIZE * 1.6 (so the
+// effective movement rate is `base_speed × 1.6` tiles/sec). Used to
+// derive a per-species step duration from species.base_speed instead
+// of fixed CHASE / WANDER constants. The two flat constants were too
+// fast for slow critters (slime, 1.0) and too slow for fast ones (cat,
+// 2.0), which is what bug #4 in todo.md was about.
+const TILE_RATE_PER_BASE_SPEED = 1.6;
+const FALLBACK_BASE_SPEED = 1.4;   // ~Rust grapevine boss speed
+
+const DIR_DELTA = {
+  up:    [ 0, -1],
+  down:  [ 0,  1],
+  left:  [-1,  0],
+  right: [ 1,  0],
+};
+const ALL_DIRS = ["up", "down", "left", "right"];
+
+// `player` accepts either a single player object (single-player) or an
+// array of live players (co-op). For chase decisions the closest live
+// player within VISION_TILES wins; if no players are passed (everyone
+// dead) chase mobs fall back to wandering like normal.
+export function tickMobs(zone, player, dt) {
+  if (!zone?.entities) return;
+  // Creative mode freezes every AI-driven entity in place so the level
+  // designer can lay out monsters / NPCs without them wandering off.
+  // Mirrors Rust movement/movement_directions.rs::perform_movement
+  // short-circuiting in creative.
+  if (isCreativeMode()) return;
+  const players = Array.isArray(player) ? player.filter(Boolean) : (player ? [player] : []);
+  // Only tick mobs whose frame overlaps the viewport this frame. Mirrors
+  // Rust's update_hitmaps gating: a monster that has wandered off-screen
+  // freezes in place. This is gameplay, not just perf — it stops monsters
+  // from merging behind the camera and lets the player time kunai launches
+  // against a stable layout.
+  const list = zone.visibleEntities ?? zone.entities;
+  for (const e of list) {
+    if (e._spawned) continue;
+    if (e._dying) continue;
+    const sp = getSpecies(e.species_id);
+    if (!sp) continue;
+    if (!isMobAi(sp)) continue;
+    ensureAi(e);
+    if (e._ai.step) advanceStep(e, dt);
+    else decideStep(e, sp, zone, players, dt);
+  }
+}
+
+function isMobAi(sp) {
+  return sp.movement_directions === "FindHero" || sp.movement_directions === "Free";
+}
+
+function ensureAi(e) {
+  if (e._ai) return;
+  const f = e.frame;
+  e._ai = {
+    step: null,
+    decideTimer: 0,
+    tileX: Math.floor(f.x),
+    tileY: Math.floor(f.y),
+    w: Math.max(1, f.w || 1),
+    h: Math.max(1, f.h || 1),
+  };
+  e.frame.x = e._ai.tileX;
+  e.frame.y = e._ai.tileY;
+}
+
+function decideStep(e, sp, zone, players, dt) {
+  e._ai.decideTimer -= dt;
+  if (e._ai.decideTimer > 0) return;
+
+  const stepDuration = stepDurationFor(sp);
+  if (sp.movement_directions === "FindHero") {
+    const target = pickClosestVisible(e, players);
+    if (target) {
+      for (const dir of chaseDirections(e, target)) {
+        if (tryStartStep(e, dir, zone, stepDuration)) return;
+      }
+    }
+  }
+  // Wander — also the fallback for FindHero mobs that can't see/reach
+  // the player, so monsters keep moving even out of line of sight.
+  const dirs = ALL_DIRS.slice();
+  shuffle(dirs);
+  for (const dir of dirs) {
+    if (tryStartStep(e, dir, zone, stepDuration)) return;
+  }
+  e._ai.decideTimer = WANDER_PAUSE;
+}
+
+function tryStartStep(e, dir, zone, duration) {
+  const [dx, dy] = DIR_DELTA[dir];
+  const toX = e._ai.tileX + dx;
+  const toY = e._ai.tileY + dy;
+  if (!canEnter(zone, e, toX, toY)) return false;
+  e.direction = capitalize(dir);
+  e._ai.step = {
+    fromX: e._ai.tileX,
+    fromY: e._ai.tileY,
+    toX, toY,
+    progress: 0,
+    duration,
+  };
+  return true;
+}
+
+// Per-species step duration mirrors Rust's straight-movement math
+// (current_speed × 1.6 tiles/sec, derived from base_entity_speed =
+// TILE_SIZE × 1.6 set in game/src/main.rs). Clamped so an extreme
+// species data value can't produce a sub-frame step or freeze a mob.
+function stepDurationFor(sp) {
+  const base = sp.base_speed > 0 ? sp.base_speed : FALLBACK_BASE_SPEED;
+  const tilesPerSec = base * TILE_RATE_PER_BASE_SPEED;
+  return Math.max(0.12, Math.min(1.5, 1 / tilesPerSec));
+}
+
+function advanceStep(e, dt) {
+  const s = e._ai.step;
+  s.progress += dt / s.duration;
+  if (s.progress < 1) {
+    e.frame.x = s.fromX + (s.toX - s.fromX) * s.progress;
+    e.frame.y = s.fromY + (s.toY - s.fromY) * s.progress;
+    return;
+  }
+  e._ai.tileX = s.toX;
+  e._ai.tileY = s.toY;
+  e.frame.x = s.toX;
+  e.frame.y = s.toY;
+  e._ai.step = null;
+}
+
+// Knockback: shove a mob away from a point (the player's tile centre),
+// sliding it up to `tiles` tiles in the dominant cardinal direction. Reuses
+// the AI's tile-locked step so the push reads as a fast slide and the mob
+// resumes normal movement afterwards. No-op if the mob can't be stepped (no
+// AI species) or every tile behind it is blocked. Owned here so all `_ai`
+// manipulation stays in one file; knockbackAura.js calls it.
+//
+// The slide duration scales with the distance covered so a multi-tile shove
+// still reads as a fast push rather than a teleport, and the step is flagged
+// `hop` so the renderer lifts the sprite a couple pixels mid-slide — a small
+// recoil bounce (knockbackHopOffset, applied by entities.js).
+const KNOCKBACK_MIN_DURATION = 0.12;      // sec floor — matches the step floor
+const KNOCKBACK_DURATION_PER_TILE = 0.07; // sec added per tile slid
+const KNOCKBACK_HOP_TILES = 3 / TILE_SIZE; // peak lift (~3px) at mid-slide
+
+export function knockbackEntity(zone, e, fromX, fromY, tiles = 1) {
+  const sp = getSpecies(e.species_id);
+  if (!sp || !isMobAi(sp)) return;
+  ensureAi(e);
+  // Start from where the mob visually is, snapped to the grid, so an in-flight
+  // step doesn't make the shove jump from a stale from-tile.
+  e._ai.tileX = Math.round(e.frame.x);
+  e._ai.tileY = Math.round(e.frame.y);
+  e.frame.x = e._ai.tileX;
+  e.frame.y = e._ai.tileY;
+
+  const cx = e._ai.tileX + 0.5;
+  const cy = e._ai.tileY + e._ai.h - 0.5;
+  const ddx = cx - fromX;
+  const ddy = cy - fromY;
+  let dx = 0, dy = 0;
+  if (Math.abs(ddx) >= Math.abs(ddy)) dx = ddx >= 0 ? 1 : -1;
+  else dy = ddy >= 0 ? 1 : -1;
+
+  let tx = e._ai.tileX, ty = e._ai.tileY, steps = 0;
+  for (let n = 0; n < tiles; n++) {
+    const nx = tx + dx, ny = ty + dy;
+    if (!canEnter(zone, e, nx, ny)) break;
+    tx = nx; ty = ny; steps++;
+  }
+  if (steps === 0) return;
+
+  e.direction = capitalize(dx > 0 ? "right" : dx < 0 ? "left" : dy > 0 ? "down" : "up");
+  e._ai.step = {
+    fromX: e._ai.tileX,
+    fromY: e._ai.tileY,
+    toX: tx, toY: ty,
+    progress: 0,
+    duration: Math.max(KNOCKBACK_MIN_DURATION, steps * KNOCKBACK_DURATION_PER_TILE),
+    hop: true,
+  };
+  // Don't immediately re-decide a chase step the instant the slide lands.
+  e._ai.decideTimer = WANDER_PAUSE;
+}
+
+// Vertical render lift (tiles, positive = up) for a mob mid-knockback, so the
+// shove reads as a small recoil hop that peaks at the midpoint of the slide.
+// Zero for any normal step or idle mob; entities.js subtracts it from draw Y.
+export function knockbackHopOffset(e) {
+  const s = e?._ai?.step;
+  if (!s || !s.hop) return 0;
+  const p = s.progress < 0 ? 0 : s.progress > 1 ? 1 : s.progress;
+  return Math.sin(p * Math.PI) * KNOCKBACK_HOP_TILES;
+}
+
+// Picks the closest live player whose Manhattan distance from the mob's
+// feet tile is within VISION_TILES. Used by FindHero mobs so co-op mobs
+// switch targets when P2 gets in close range, instead of locking onto
+// P1 forever (mobs.js only knew about state.player before).
+function pickClosestVisible(e, players) {
+  const feetY = e._ai.tileY + e._ai.h - 1;
+  let best = null;
+  let bestDist = Infinity;
+  for (const p of players) {
+    if (!p) continue;
+    const dx = p.tileX - e._ai.tileX;
+    const dy = p.tileY - feetY;
+    const dist = Math.abs(dx) + Math.abs(dy);
+    if (dist === 0 || dist > VISION_TILES) continue;
+    if (dist < bestDist) { best = p; bestDist = dist; }
+  }
+  return best;
+}
+
+// Pure helper, exported for tests: which directions to try, in priority
+// order, to chase the player. Returns [] if not in vision range.
+export function chaseDirections(e, player) {
+  const feetY = e._ai.tileY + e._ai.h - 1;
+  const dx = player.tileX - e._ai.tileX;
+  const dy = player.tileY - feetY;
+  const dist = Math.abs(dx) + Math.abs(dy);
+  if (dist === 0 || dist > VISION_TILES) return [];
+  const horizFirst = Math.abs(dx) >= Math.abs(dy);
+  const horiz = dx > 0 ? "right" : dx < 0 ? "left" : null;
+  const vert  = dy > 0 ? "down"  : dy < 0 ? "up"   : null;
+  const out = [];
+  if (horizFirst) { if (horiz) out.push(horiz); if (vert) out.push(vert); }
+  else            { if (vert)  out.push(vert);  if (horiz) out.push(horiz); }
+  return out;
+}
+
+function canEnter(zone, self, tileX, tileY) {
+  const bottomY = tileY + self._ai.h - 1;
+  if (!isWalkable(zone, tileX, bottomY)) return false;
+  for (const other of zone.entities) {
+    if (other === self) continue;
+    if (other._spawned) continue;
+    if (other._dying) continue;
+    const sp = getSpecies(other.species_id);
+    if (!sp) continue;
+    // Open gates are walkable just like in zone.isEntityBlocked. Without
+    // this, monsters refuse to cross a gate the player has unlocked.
+    if ((sp.entity_type === "Gate" || sp.entity_type === "InverseGate") && other._open) continue;
+    if (sp.entity_type === "Teleporter") continue;
+    if (!sp.is_rigid && !isMobAi(sp)) continue;
+    const f = other.frame;
+    if (!f) continue;
+    const fw = sp.width || f.w || 1;
+    const fh = sp.height || f.h || 1;
+    const fx = Math.floor(f.x);
+    const fy = Math.floor(f.y);
+    if (tileX < fx || tileX >= fx + fw) continue;
+    if (bottomY < fy || bottomY >= fy + fh) continue;
+    return false;
+  }
+  return true;
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : "Down"; }

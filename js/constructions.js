@@ -1,0 +1,200 @@
+// Construction type metadata. Mirrors game_core/src/maps/constructions.rs.
+//
+// Slope variants (29..60, four biomes × eight orientations) ship as
+// individual ids so the renderer can pick the right corner/edge sprite,
+// but we treat them as rectangular obstacles. Rust does the same
+// is_obstacle() = true (fall-through to `_ => true`) but additionally
+// computes a shaped hittable_frame with per-orientation padding
+// (slope_hittable_frame_padding). That extra trim lets the player walk
+// into the "downhill" half of a slope tile in Rust; ours rejects the
+// whole tile. Cosmetic difference at edges, no functional gap.
+
+export const CONSTRUCTION = Object.freeze({
+  WOODEN_FENCE: 1,
+  NOTHING: 2,
+  DARK_ROCK: 3,
+  LIGHT_WALL: 4,
+  COUNTER: 5,
+  LIBRARY: 6,
+  TALL_GRASS: 7,
+  FOREST: 8,
+  BAMBOO: 9,
+  BOX: 10,
+  RAIL: 11,
+  STONE_WALL: 12,
+  INDICATOR_ARROW: 13,
+  BRIDGE: 14,
+  BROADLEAF: 15,
+  METAL_FENCE: 16,
+  STONE_BOX: 17,
+  SPOILED_TREE: 18,
+  WINE_TREE: 19,
+  SOLAR_PANEL: 20,
+  PIPE: 21,
+  BROADLEAF_PURPLE: 22,
+  WOODEN_WALL: 23,
+  SNOW_PILE: 24,
+  SNOWY_FOREST: 25,
+  DARKNESS_15: 26,
+  DARKNESS_30: 27,
+  DARKNESS_45: 28,
+  SLOPE_GREEN_TL: 29,
+  SLOPE_GREEN_TR: 30,
+  SLOPE_GREEN_BR: 31,
+  SLOPE_GREEN_BL: 32,
+  SLOPE_GREEN_B:  33,
+  SLOPE_GREEN_T:  34,
+  SLOPE_GREEN_L:  35,
+  SLOPE_GREEN_R:  36,
+  SLOPE_ROCK_TL: 37,
+  SLOPE_ROCK_TR: 38,
+  SLOPE_ROCK_BR: 39,
+  SLOPE_ROCK_BL: 40,
+  SLOPE_ROCK_B:  41,
+  SLOPE_ROCK_T:  42,
+  SLOPE_ROCK_L:  43,
+  SLOPE_ROCK_R:  44,
+  SLOPE_SAND_TL: 45,
+  SLOPE_SAND_TR: 46,
+  SLOPE_SAND_BR: 47,
+  SLOPE_SAND_BL: 48,
+  SLOPE_SAND_B:  49,
+  SLOPE_SAND_T:  50,
+  SLOPE_SAND_L:  51,
+  SLOPE_SAND_R:  52,
+  SLOPE_DARKROCK_TL: 53,
+  SLOPE_DARKROCK_TR: 54,
+  SLOPE_DARKROCK_BR: 55,
+  SLOPE_DARKROCK_BL: 56,
+  SLOPE_DARKROCK_B:  57,
+  SLOPE_DARKROCK_T:  58,
+  SLOPE_DARKROCK_L:  59,
+  SLOPE_DARKROCK_R:  60,
+});
+
+const CHAR_TO_CONSTRUCTION = {
+  "0": CONSTRUCTION.NOTHING,
+  "1": CONSTRUCTION.WOODEN_FENCE,
+  "3": CONSTRUCTION.DARK_ROCK,
+  "4": CONSTRUCTION.LIGHT_WALL,
+  "5": CONSTRUCTION.COUNTER,
+  "6": CONSTRUCTION.LIBRARY,
+  "7": CONSTRUCTION.TALL_GRASS,
+  "8": CONSTRUCTION.FOREST,
+  "9": CONSTRUCTION.BAMBOO,
+  A: CONSTRUCTION.BOX,
+  B: CONSTRUCTION.RAIL,
+  C: CONSTRUCTION.STONE_WALL,
+  D: CONSTRUCTION.INDICATOR_ARROW,
+  E: CONSTRUCTION.BRIDGE,
+  F: CONSTRUCTION.BROADLEAF,
+  G: CONSTRUCTION.METAL_FENCE,
+  H: CONSTRUCTION.STONE_BOX,
+  J: CONSTRUCTION.SPOILED_TREE,
+  K: CONSTRUCTION.WINE_TREE,
+  L: CONSTRUCTION.SOLAR_PANEL,
+  M: CONSTRUCTION.PIPE,
+  N: CONSTRUCTION.BROADLEAF_PURPLE,
+  O: CONSTRUCTION.WOODEN_WALL,
+  P: CONSTRUCTION.SNOW_PILE,
+  Q: CONSTRUCTION.SNOWY_FOREST,
+  R: CONSTRUCTION.DARKNESS_15,
+  S: CONSTRUCTION.DARKNESS_30,
+  T: CONSTRUCTION.DARKNESS_45,
+  U: CONSTRUCTION.SLOPE_GREEN_TL,
+  V: CONSTRUCTION.SLOPE_GREEN_TR,
+  W: CONSTRUCTION.SLOPE_GREEN_BR,
+  X: CONSTRUCTION.SLOPE_GREEN_BL,
+  Y: CONSTRUCTION.SLOPE_GREEN_B,
+  Z: CONSTRUCTION.SLOPE_GREEN_T,
+  a: CONSTRUCTION.SLOPE_GREEN_L,
+  b: CONSTRUCTION.SLOPE_GREEN_R,
+  c: CONSTRUCTION.SLOPE_ROCK_TL,
+  d: CONSTRUCTION.SLOPE_ROCK_TR,
+  e: CONSTRUCTION.SLOPE_ROCK_BR,
+  f: CONSTRUCTION.SLOPE_ROCK_BL,
+  g: CONSTRUCTION.SLOPE_ROCK_B,
+  h: CONSTRUCTION.SLOPE_ROCK_T,
+  j: CONSTRUCTION.SLOPE_ROCK_L,
+  k: CONSTRUCTION.SLOPE_ROCK_R,
+  i: CONSTRUCTION.SLOPE_SAND_TL,
+  l: CONSTRUCTION.SLOPE_SAND_TR,
+  m: CONSTRUCTION.SLOPE_SAND_BR,
+  n: CONSTRUCTION.SLOPE_SAND_BL,
+  o: CONSTRUCTION.SLOPE_SAND_B,
+  p: CONSTRUCTION.SLOPE_SAND_T,
+  q: CONSTRUCTION.SLOPE_SAND_L,
+  r: CONSTRUCTION.SLOPE_SAND_R,
+  s: CONSTRUCTION.SLOPE_DARKROCK_TL,
+  t: CONSTRUCTION.SLOPE_DARKROCK_TR,
+  u: CONSTRUCTION.SLOPE_DARKROCK_BR,
+  v: CONSTRUCTION.SLOPE_DARKROCK_BL,
+  w: CONSTRUCTION.SLOPE_DARKROCK_B,
+  x: CONSTRUCTION.SLOPE_DARKROCK_T,
+  y: CONSTRUCTION.SLOPE_DARKROCK_L,
+  z: CONSTRUCTION.SLOPE_DARKROCK_R,
+};
+
+export function constructionFromChar(c) {
+  return CHAR_TO_CONSTRUCTION[c] ?? CONSTRUCTION.NOTHING;
+}
+
+// Inverse of constructionFromChar. Built lazily from CHAR_TO_CONSTRUCTION
+// so the two stay in sync without duplicating the table.
+const CONSTRUCTION_TO_CHAR = Object.fromEntries(
+  Object.entries(CHAR_TO_CONSTRUCTION).map(([ch, id]) => [id, ch]),
+);
+
+export function constructionToChar(id) {
+  return CONSTRUCTION_TO_CHAR[id] ?? "0";
+}
+
+const NON_OBSTACLE = new Set([
+  CONSTRUCTION.NOTHING,
+  CONSTRUCTION.TALL_GRASS,
+  CONSTRUCTION.BOX,
+  CONSTRUCTION.RAIL,
+  CONSTRUCTION.BRIDGE,
+  CONSTRUCTION.DARKNESS_15,
+  CONSTRUCTION.DARKNESS_30,
+  CONSTRUCTION.DARKNESS_45,
+  CONSTRUCTION.INDICATOR_ARROW,
+]);
+
+export function constructionIsObstacle(c) {
+  return !NON_OBSTACLE.has(c);
+}
+
+// Mirrors Rust Construction::stops_bullets. This is NOT the same as
+// constructionIsObstacle: wooden fences, bamboo, counters, thin trees
+// (spoiled/wine), pipes, solar panels and snow piles all block walking but
+// let a thrown kunai fly over them. Only solid walls, rocks, dense forests,
+// boxes and the (rigid) slopes stop a bullet.
+const STOPS_BULLETS = new Set([
+  CONSTRUCTION.METAL_FENCE,
+  CONSTRUCTION.DARK_ROCK,
+  CONSTRUCTION.LIGHT_WALL,
+  CONSTRUCTION.LIBRARY,
+  CONSTRUCTION.FOREST,
+  CONSTRUCTION.BOX,
+  CONSTRUCTION.STONE_WALL,
+  CONSTRUCTION.BROADLEAF,
+  CONSTRUCTION.STONE_BOX,
+  CONSTRUCTION.BROADLEAF_PURPLE,
+  CONSTRUCTION.WOODEN_WALL,
+  CONSTRUCTION.SNOWY_FOREST,
+]);
+
+export function constructionStopsBullets(c) {
+  // Slopes (ids 29..60) are all rigid and stop bullets in the original.
+  if (c >= CONSTRUCTION.SLOPE_GREEN_TL && c <= CONSTRUCTION.SLOPE_DARKROCK_R) return true;
+  return STOPS_BULLETS.has(c);
+}
+
+export function constructionIsBridge(c) {
+  return c === CONSTRUCTION.BRIDGE;
+}
+
+export function constructionIsVisible(c) {
+  return c !== CONSTRUCTION.NOTHING;
+}
