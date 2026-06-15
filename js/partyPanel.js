@@ -43,7 +43,8 @@ import { registerMenuSurface, focusFirstIn } from "./menuNav.js";
 import { startMatch as startDeathmatch, exit as exitDeathmatch } from "./onlineDeathmatch.js";
 import { exitPvp } from "./pvpController.js";
 import { startTowerDefense } from "./towerDefense.js";
-import { isPvp, isPvpHostSetup, setPvpHostSetup } from "./gameMode.js";
+import { isPvp, isPvpHostSetup, setPvpHostSetup, isTowerDefenseMode } from "./gameMode.js";
+import { openMapSelect } from "./mapSelect.js";
 import { el, showOnly } from "./dom.js";
 import { guardTextInput } from "./textInputGuard.js";
 import { makeConfirmControl } from "./confirmControl.js";
@@ -275,7 +276,7 @@ function buildHostingOnlineView() {
   hoPeerList = el("ul", { class: "party-peer-list" });
   // Start (online pvp, before the match) / End session (otherwise) — exactly
   // one is shown, picked in renderHostingOnlineView.
-  hoStartBtn = el("button", { id: "party-start-match", text: "Start match", on: { click: onStartMatchClick } });
+  hoStartBtn = el("button", { id: "party-start-match", text: "Choose map & start ▶", on: { click: onStartCoopClick } });
   hoEndControl = partyConfirm("End session", endOnlineSession);
 
   return el("div", { class: "party-view", dataset: { view: "hostingOnline" } }, [
@@ -295,10 +296,7 @@ function buildHostingOnlineView() {
 }
 
 function renderHostingOnlineView() {
-  const mode = onlineHostMode || "coop";
-  hoDescEl.textContent = mode === "pvp"
-    ? "Online PvP — a realtime deathmatch. Share the code, then start the match once a friend has joined."
-    : "Online co-op — friends drop into your world and play alongside you.";
+  hoDescEl.textContent = "Online co-op — share the code so friends can join, then choose a map to start. Friends can also drop into a run already in progress.";
 
   const code = getInviteCode();
   hoCodeEl.textContent = code || "…";
@@ -306,25 +304,15 @@ function renderHostingOnlineView() {
   hoCopyBtn.disabled = !hasCode;
   hoShareBtn.disabled = !hasCode;
 
-  const peers = getKnownPeers();
-  patchPeerList(peers);
+  patchPeerList(getKnownPeers());
 
-  // "Start match" only exists for online pvp, and only before a match runs.
-  // While a deathmatch is live (or for plain co-op) we show "End session".
-  // Before the match starts the game mode is still coop (set to pvp only when
-  // startDeathmatch runs), so isPvp() flips to true exactly when the match
-  // goes live — at which point we swap "Start match" for "End session".
-  const showStart = mode === "pvp" && !isPvp();
+  // Lobby vs live: before the host starts a run, offer "Choose map & start";
+  // once the TD run is live, swap to "End session". (No peer gating — a friend
+  // can join a running game and reconcileGuestHeroes hands them a hero.)
+  const showStart = !isTowerDefenseMode();
   hoStartBtn.style.display = showStart ? "" : "none";
   hoEndControl.root.style.display = showStart ? "none" : "";
   if (showStart) hoEndControl.reset();
-
-  if (showStart) {
-    const canStart = peers.length >= 1;
-    hoStartBtn.disabled = !canStart;
-    hoStartBtn.classList.toggle("party-disabled", !canStart);
-    hoStartBtn.title = canStart ? "" : "Wait for a friend to join first.";
-  }
 }
 
 function onStartMatchClick() {
@@ -564,10 +552,18 @@ function onHostOnlineClick() {
   // — guests who join with the invite code mirror it (reconcileGuestHeroes adds
   // each a hero). The panel stays open on the hosting view so the host can share
   // the code.
+  // Become the host; the hosting view IS the co-op lobby (invite code + peers +
+  // "choose map & start"). The run starts only when the host picks a map, so
+  // friends have time to join first.
   onlineHostMode = "coop";
-  switchRole("host")
-    .then(() => startTowerDefense())
-    .catch((e) => console.error("[party] host → TD", e));
+  switchRole("host").catch((e) => console.error("[party] switchRole(host)", e));
+}
+
+// Host's lobby "start": pick a map, which starts the authoritative TD run.
+// Guests already in the session mirror it; late joiners get a hero on the fly.
+function onStartCoopClick() {
+  closePartyPanel();
+  openMapSelect();
 }
 
 function onOfflineCoopClick() {
