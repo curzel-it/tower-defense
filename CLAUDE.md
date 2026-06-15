@@ -1,8 +1,14 @@
 # Hello Claude!
 
-HTML5 / Canvas / vanilla JS build of SneakBit, originally a Rust-core game shipped on Steam (raylib desktop), iOS (CoreGraphics) and Android (Compose).
+This is a co-op **Tower Defense** game: a team of heroes defends a path against
+waves of monsters. HTML5 / Canvas / vanilla JS.
 
-This repo *is* that game. The original Rust source is preserved in this repository's history, from before the HTML build absorbed it — see the `rust-core-tip` tag (e.g. `git show rust-core-tip:game_core/...`, or browse the tag on GitHub). Treat that history as read-only reference material; today's codebase is the HTML build.
+It was **forked from [SneakBit](https://github.com/curzel-it/sneakbit)** — a
+top-down pixel-art adventure — and reuses its engine (rendering, tiles/biomes,
+player, combat, input, online co-op). The SneakBit adventure (story, zones,
+quests, NPCs) is being stripped out; this repo is now its own tower-defense
+game and does **not** aim to stay compatible with SneakBit. The original game
+lives on in its own repo.
 
 ## Handling a Task
 1. For non-trivial tasks, use the built-in plan mode to create a plan before implementing
@@ -12,22 +18,34 @@ This repo *is* that game. The original Rust source is preserved in this reposito
 5. Commit and push (see below)
 6. Enjoy!
 
+## The game
+- **Modes:** solo, local split-screen co-op, and online co-op (host-authoritative
+  over WebRTC). There is no longer a single-player adventure, PvP, or creative mode.
+- **The loop:** a build phase (push stones to shape the maze) → a wave phase
+  (fight the horde marching the path) → clear → repeat, on increasingly hard maps.
+- **Economy:** the run uses the game's coins in a transient per-run save
+  (`tdSave.js`) — never the real wallet. Ammo is finite; coins buy ammo, weapons
+  and consumables from the in-run shop (`tdShopStock.js`), and recruit/revive heroes.
+- **Key files:** `towerDefense.js` (controller + frame), `tdBoard.js`, `tdMaze.js`,
+  `tdWaves.js`, `tdEnemies.js`, `tdHud.js`, `tdShopStock.js`, `tdSave.js`,
+  `heroSwitch.js`, `allyAI.js`. The boot (`main.js`) starts a TD run directly.
+
 ## Testing, committing, shipping
 - **Unit tests** use Node's built-in test runner — no framework. Tests live in `tests/` and end in `.test.js`. They are pure node, no DOM, ~2 s to run, and need no install. (The repo's one devDependency, esbuild, is for the production build only — see "No build step" below.)
-- **E2E tests** live in `tests/e2e/*.test.mjs`. They drive headless Chrome via raw CDP and exercise the live game end-to-end (co-op host + guest, snapshot flow, WebRTC DC, predicted-self timing). They self-skip if Chrome isn't on the path; set `CHROME_PATH` to point at a non-default install. Slower (~26 s total) — that's why they're a separate npm script.
+- **E2E tests** live in `tests/e2e/*.test.mjs`. They drive headless Chrome via raw CDP and exercise the live game end-to-end. They self-skip if Chrome isn't on the path; set `CHROME_PATH` to point at a non-default install.
 - Commands:
   ```bash
   npm run test:unit   # fast inner loop (~2 s)
-  npm run test:e2e    # full e2e suite (~26 s; needs Chrome)
+  npm run test:e2e    # full e2e suite (needs Chrome)
   npm test            # both, sequential
   ```
-  Run `test:unit` often — at minimum before each commit. Run `test:e2e` before any push that touches `onlineBootstrap.js`, `webrtcTransport.js`, `webrtcChannel.js`, `predictedSelf.js`, `mirrorWorld.js`, or `snapshotBroadcaster.js`.
+  Run `test:unit` often — at minimum before each commit.
 - **Commit often.** Small focused commits beat large ones. Each commit should leave the game in a runnable state (`npm test` green, page loads without console errors).
-- **Push to main often.** Pushing to `main` is *not* a release on its own — nothing is wired to auto-deploy from it anymore. Production is <https://sneakbit.curzel.it>, served from the VPS, and only goes live when you run `npm run deploy` (which builds + ships the client). So keep `main` healthy and push freely; ship to users explicitly with `npm run deploy` (or `npm run deploy -- --commit "msg"` to commit + push + deploy in one shot).
+- **Push to main often.** Pushing to `main` is *not* a release on its own. Production is <https://towerdefense.curzel.it>, served from the VPS, and only goes live when you run `npm run deploy` (which builds + ships the client). So keep `main` healthy and push freely; ship to users explicitly with `npm run deploy` (or `npm run deploy -- --commit "msg"` to commit + push + deploy in one shot).
 
 ## Server (`server/`)
-- The Node server lives in `server/` — vanilla `node:http`, no deps, ES modules, same "one feature one file" rule as the client. Run locally with `node server/index.js` (defaults: `127.0.0.1:8090`). `GET /health` returns 200 "ok" — keep that endpoint cheap.
-- Production lives at <https://sneakbit.curzel.it> on a shared Ubuntu VPS (IP in `.env` as `IP_ADDRESS`). systemd unit `sneakbit-server`, nginx reverse proxy, TLS via certbot.
+- The Node server lives in `server/` — vanilla `node:http`, no deps, ES modules, same "one feature one file" rule as the client. Run locally with `node server/index.js`. `GET /health` returns 200 "ok" — keep that endpoint cheap.
+- Production lives at <https://towerdefense.curzel.it> on a shared Ubuntu VPS that also serves sneakbit.curzel.it and restartborgo.it (IP in `.env` as `IP_ADDRESS`). systemd unit `towerdefense-server`, nginx reverse proxy, TLS via certbot. See `docs/deploy.md` for how the three services coexist.
 - Deploy with `npm run deploy` (i.e. `node tools/deploy.mjs` — ssh2-based, idempotent). `npm run deploy -- --commit "msg"` to commit + push + deploy in one shot.
 
 ## Style and Guidelines
@@ -46,3 +64,5 @@ Each feature lives in exactly one file. A "feature" is a single, self-contained 
 - Cross-feature communication happens through explicit imports of named exports — no globals, no event bus until we genuinely need one.
 - Feature-local constants live in the feature file. Truly cross-cutting constants (tile size, sprite-sheet ids) live in `js/constants.js`.
 - Asset loading is its own feature (`js/assets.js`). Data loading (levels, species) is its own feature (`js/data.js`). Features ask them by name; they never new up `Image` or `fetch` themselves.
+
+> **Note:** this codebase still carries dormant SneakBit engine modules (adventure/quests/NPCs) that the TD build no longer reaches. They're being removed in batches; don't wire new TD features through them.
