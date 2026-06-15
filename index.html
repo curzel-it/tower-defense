@@ -4,18 +4,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SneakBit — a top-down pixel-art adventure</title>
+    <title>Tower Defense — co-op pixel-art tower defense</title>
     <meta name="description"
-        content="SneakBit is a top-down pixel-art adventure: explore, fight, and team up in co-op. Play free in your browser, or get it on Steam, iOS, and Android.">
+        content="A co-op pixel-art tower defense: a squad of heroes mazes the path and holds the line against waves. Play free in your browser. Forked from SneakBit.">
     <link rel="icon" href="/favicon.ico">
 
     <!-- Open Graph / social cards -->
     <meta property="og:type" content="website">
-    <meta property="og:title" content="SneakBit">
+    <meta property="og:title" content="Tower Defense">
     <meta property="og:description"
-        content="Adventure, Action, Nostalgia — a story-driven pixel-art RPG. Play free in your browser.">
-    <meta property="og:image" content="/media/screenshots/1.png">
-    <meta property="og:url" content="https://sneakbit.curzel.it/">
+        content="Defend the path. A co-op pixel-art tower defense — play free in your browser.">
+    <meta property="og:image" content="/media/screenshots/td-wave.png">
+    <meta property="og:url" content="https://towerdefense.curzel.it/">
     <meta name="twitter:card" content="summary_large_image">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -136,23 +136,23 @@
     <div class="topbar"><span id="account-link"></span></div>
 
     <header>
-        <h1>SneakBit</h1>
-        <h2>Adventure, Action, Nostalgia</h2>
+        <h1>Tower Defense</h1>
+        <h2>Defend the path. Together.</h2>
         <div class="lede">
-            Awaken in a mysterious world teeming with danger, magic, and secrets.<br><br>
-            Explore stunning pixel-art landscapes, from serene villages to treacherous dungeons.<br>
-            Meet unforgettable characters, uncover secrets and choose your path in this story-driven RPG.
+            A squad of heroes against an endless horde.<br><br>
+            Shape the maze in the build phase, then hold the line: switch heroes, spend
+            your coins on ammo, weapons and revives, and survive wave after wave on
+            ever-harder maps — solo or in co-op.<br>
+            A standalone game forked from the pixel-art adventure
+            <a href="https://sneakbit.curzel.it/" target="_blank" rel="noopener">SneakBit</a>.
         </div>
     </header>
 
     <section>
         <div class="carousel-container">
             <div class="carousel">
-                <img src="/media/screenshots/1.png" alt="SneakBit screenshot 1">
-                <img src="/media/screenshots/2.png" alt="SneakBit screenshot 2">
-                <img src="/media/screenshots/3.png" alt="SneakBit screenshot 3">
-                <img src="/media/screenshots/4.png" alt="SneakBit screenshot 4">
-                <img src="/media/screenshots/5.png" alt="SneakBit screenshot 5">
+                <img src="/media/screenshots/td-build.png" alt="Tower Defense build phase">
+                <img src="/media/screenshots/td-wave.png" alt="Tower Defense holding the line during a wave">
             </div>
             <div class="carousel-controls">
                 <button id="prev" aria-label="Previous screenshot">&#10094;</button>
@@ -174,44 +174,35 @@
                     <span class="big">In Browser</span>
                 </span>
             </a>
-            <a href="https://store.steampowered.com/app/3360860/SneakBit/" target="_blank" rel="noopener">
-                <img src="/media/badges/steam_badge.webp" alt="Get it on Steam" style="width: 200px; height: auto;">
-            </a>
-            <a href="https://apps.apple.com/app/sneakbit/id6737452377" target="_blank" rel="noopener">
-                <img src="/media/badges/appstore_badge.webp" alt="Download on the App Store" style="width: 200px; height: auto;">
-            </a>
-            <a href="https://play.google.com/store/apps/details?id=it.curzel.bitscape" target="_blank" rel="noopener">
-                <img src="/media/badges/playstore_badge.webp" alt="Get it on Google Play" style="width: 200px; height: auto;">
-            </a>
         </div>
     </section>
 
     <section class="features">
         <h2>Features</h2>
         <ul>
-            <li>Adventure-action gameplay with kunai and sword combat.</li>
-            <li>Grid-based tiling system with biomes and constructions.</li>
-            <li>Unlockable combat skills and story-driven progression.</li>
-            <li>Nostalgic pixel art aesthetics.</li>
-            <li>Online co-op multiplayer — play together right in the browser.</li>
-            <li>Playable on desktop, mobile, and the web.</li>
+            <li>Build → wave → clear: maze the path, then hold the line, on ever-harder maps.</li>
+            <li>A squad of distinct heroes — switch who you drive; the rest fight as AI allies.</li>
+            <li>Finite ammo + an in-run shop: coins from kills buy ammo, weapons and consumables.</li>
+            <li>Recruit and revive heroes mid-run from a shared coin purse.</li>
+            <li>Local split-screen and online co-op — defend together right in the browser.</li>
+            <li>Keyboard and gamepad support; runs on desktop, mobile, and the web.</li>
         </ul>
     </section>
 
     <section class="features">
         <h2>Credits</h2>
         <ul>
+            <li>Forked from <a href="https://github.com/curzel-it/sneakbit" target="_blank" rel="noopener">SneakBit</a> by <a href="https://github.com/curzel-it" target="_blank" rel="noopener">Federico Curzel</a></li>
             <li>Music by <a href="https://www.filippovicarelli.com/8bit-game-background-music" target="_blank" rel="noopener">Filippo Vicarelli</a></li>
             <li>Sound Effects by <a href="https://opengameart.org/content/512-sound-effects-8-bit-style" target="_blank" rel="noopener">SubspaceAudio</a></li>
             <li>Font by <a href="https://dl.dafont.com/dl/?f=pixel_operator" target="_blank" rel="noopener">HarvettFox96</a></li>
-            <li>Web port of the <a href="https://github.com/curzel-it/sneakbit/tree/rust-core-tip" target="_blank" rel="noopener">original Rust build</a> — source on <a href="https://github.com/curzel-it/sneakbit" target="_blank" rel="noopener">GitHub</a></li>
         </ul>
     </section>
 
     <footer>
         <p>&copy; Federico Curzel</p>
         <div class="social-links">
-            <a href="https://github.com/curzel-it/sneakbit" target="_blank" rel="noopener"><img src="/media/badges/github.png" alt="GitHub"></a>
+            <a href="https://github.com/curzel-it/tower-defense" target="_blank" rel="noopener"><img src="/media/badges/github.png" alt="GitHub"></a>
             | <a href="https://discord.gg/ZP7vfXub" target="_blank" rel="noopener"><img src="/media/badges/discord.png" alt="Discord"></a>
             | <a href="https://www.youtube.com/@HiddenMugs" target="_blank" rel="noopener"><img src="/media/badges/youtube.png" alt="YouTube"></a>
             | <a href="https://x.com/HiddenMugs" target="_blank" rel="noopener"><img src="/media/badges/twitter.png" alt="Twitter"></a>
