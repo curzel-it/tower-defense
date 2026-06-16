@@ -14,7 +14,9 @@
 // Per archetype, keyed off the loadout:
 //   * Ninja (rooted shooter) — kunai fly in straight cardinal lanes, so it only
 //     moves to line up on the target's row/column, and backs off to keep ≥2
-//     tiles from the nearest enemy. It fires while it repositions.
+//     tiles from the nearest enemy. Ammo is finite, so it holds fire while
+//     repositioning and looses a kunai only once planted and lane-aligned (a
+//     shot that can actually connect) — and only while the squad stash isn't dry.
 //   * Barbarian (charger) — a strict priority ladder:
 //       1. low HP        → take cover (back off so HP regen can resume).
 //       2. enemy ≤1 tile → melee it.
@@ -24,7 +26,7 @@
 //       5. commit        → keep that target until it's eliminated, switching
 //                          only if a strictly closer enemy appears.
 
-import { tryShootForPlayer } from "./shooting.js";
+import { tryShootForPlayer, heroHasAmmo } from "./shooting.js";
 import { performMeleeSwing } from "./melee.js";
 import { resolveLoadout } from "./sessionLoadouts.js";
 import { isWalkable } from "./zone.js";
@@ -61,7 +63,7 @@ export function driveAlly(state, hero, ctx) {
   return isCharger ? driveCharger(state, hero, ctx) : driveShooter(state, hero, ctx);
 }
 
-// — Ninja: line up on a lane, keep your distance, fire while moving ———————————
+// — Ninja: line up on a lane, keep your distance, fire only clean shots ———————
 function driveShooter(state, hero, ctx) {
   const enemies = ctx?.enemies || [];
   const target = selectTarget(hero, enemies, getField(), ctx?.goal, SHOOTER_RANGE);
@@ -80,17 +82,27 @@ function driveShooter(state, hero, ctx) {
   }
 
   if (moveDir) {
-    // Shoot while moving: the shot leaves in the step direction (fired now,
-    // before updatePlayer runs), then the hero takes the step.
+    // Reposition WITHOUT firing. Ammo is finite now: a kunai loosed mid-step
+    // flies down whatever lane we happen to be walking, almost never a foe.
+    // Holding fire until we're planted is the bulk of "stop spamming kunai".
     hero.direction = moveDir;
-    tryShootForPlayer(hero);
     return walk(moveDir);
   }
-  // Planted in a lane (or boxed in) — face the target down it and fire.
+  // Planted. Fire only a clean cardinal shot — the target genuinely shares our
+  // row/column (a kunai will travel toward it) and the stash has a round to
+  // spend. Boxed-in-and-misaligned just faces the target and waits.
   const laneDir = laneDirToward(hero, tt);
   hero.direction = laneDir;
-  tryShootForPlayer(hero);
+  if (hasCleanShot(hero, tt) && heroHasAmmo(hero)) tryShootForPlayer(hero);
   return face(laneDir);
+}
+
+// A clean shot is one the kunai can actually connect on: the hero shares the
+// target's row or column, so firing down that cardinal lane sends the kunai
+// straight at it. Off-lane (only reached when boxed in, since alignStep failed)
+// there's no shot worth a finite round.
+export function hasCleanShot(hero, tt) {
+  return (hero.tileX | 0) === tt.x || (hero.tileY | 0) === tt.y;
 }
 
 // — Barbarian: the priority ladder ———————————————————————————————————————————

@@ -21,7 +21,6 @@ import { rumble } from "./rumble.js";
 import { pvpSlotCanAct } from "./pvpMatch.js";
 import { isPvp, isTowerDefenseMode } from "./gameMode.js";
 import { spendPvpAmmo, getPvpRangedWeapon, bulletOfWeapon } from "./pvpLoadout.js";
-import { ownerSlotOf } from "./heroSwitch.js";
 import { spawnLocalFlash } from "./localEffects.js";
 import { ANIMATIONS_FPS } from "./constants.js";
 
@@ -154,6 +153,16 @@ export function tryShootForPlayer(player) {
   shoot(state, player);
 }
 
+// Tower Defense ally seam: does this hero have a round for its ranged weapon in
+// the shared squad stash? allyAI checks this before firing so an AI teammate
+// holds its kunai (rather than dry-firing the no-ammo sound every frame) once
+// the pool runs dry — the conservative half of "stop spamming finite ammo".
+export function heroHasAmmo(player) {
+  if (!player) return false;
+  const { bulletId } = resolveRangedWeapon(player);
+  return getAmmo(bulletId, player.index | 0) > 0;
+}
+
 // Guest-side local prediction: the instant the guest presses shoot, play the
 // gunshot SFX and pop a brief muzzle flash one tile ahead — instead of waiting
 // a full RTT for the host's authoritative bullet to echo back in a snapshot.
@@ -283,13 +292,15 @@ function shoot(state, shooter) {
   // co-op / single-player / online keep the persisted inventory.
   if (isPvp()) {
     if (!spendPvpAmmo(idx, bulletId)) { playSfx("noAmmo"); rumble(idx + 1, "noAmmo"); return; }
-  } else if (!isTowerDefenseMode() || ownerSlotOf(idx) != null) {
+  } else if (!isTowerDefenseMode() || !shooter?.playerId) {
     // Tower Defense burns real rounds now — its ammo lives in the transient TD
-    // inventory (tdSave.js), per hero, so the shop economy has teeth and the
-    // saved game is still never touched. Only a hero a LOCAL player is driving
-    // pays: AI teammates and online-guest heroes have no purse to restock from,
-    // so they fire free (like the towers they stand in for). Outside TD the
-    // guard is always true, so the saved-inventory path is byte-identical.
+    // inventory (tdSave.js), a single shared squad stash, so the shop economy
+    // has teeth and the saved game is still never touched. Every LOCAL hero
+    // draws from that stash: the possessed hero AND the AI teammates allyAI
+    // drives (they used to fire free, never debiting the pool, which let the AI
+    // spam kunai for nothing). Only online-guest heroes (a playerId we own no
+    // purse for) still fire free, like the towers they stand in for. Outside TD
+    // the first clause holds, so the saved-inventory path is byte-identical.
     if (getAmmo(bulletId, idx) <= 0) { playSfx("noAmmo"); rumble(idx + 1, "noAmmo"); return; }
     if (!removeAmmo(bulletId, 1, idx)) return;
   }

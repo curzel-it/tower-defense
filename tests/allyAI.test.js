@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 
 import {
   selectTarget, marchTarget, resetAllyAI, pathStepToward,
-  alignStep, laneDirToward, seekVisibleArea,
+  alignStep, laneDirToward, seekVisibleArea, hasCleanShot,
 } from "../js/allyAI.js";
 
 const enemy = (id, x, y, extra = {}) => ({ id, frame: { x, y, w: 1, h: 1 }, ...extra });
@@ -112,6 +112,12 @@ test("alignStep zeroes the nearer lane and avoids walls", () => {
 test("laneDirToward fires along the shared row or column", () => {
   assert.equal(laneDirToward(hero(2, 5), { x: 2, y: 1 }), "up");    // same column
   assert.equal(laneDirToward(hero(2, 5), { x: 6, y: 5 }), "right"); // same row
+});
+
+test("hasCleanShot only when the hero shares the target's row or column", () => {
+  assert.equal(hasCleanShot(hero(2, 5), { x: 2, y: 1 }), true);  // same column
+  assert.equal(hasCleanShot(hero(2, 5), { x: 6, y: 5 }), true);  // same row
+  assert.equal(hasCleanShot(hero(2, 5), { x: 6, y: 1 }), false); // off-lane: no shot
 });
 
 // — seekVisibleArea: regroup toward the camera centre ————————————————————————
