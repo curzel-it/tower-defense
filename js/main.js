@@ -2,7 +2,7 @@
 
 import { STARTING_ZONE_ID, STARTING_SPAWN, PVP_ARENA_ZONE_ID } from "./constants.js";
 import { loadAssets } from "./assets.js";
-import { loadSpecies, loadStrings, loadZone } from "./data.js";
+import { loadSpecies, loadStrings } from "./data.js";
 import { loadStringsData, tr } from "./strings.js";
 import { installDialogue, isDialogueOpen } from "./dialogue.js";
 import { installInteract, tickInteract, tryInteractForSlot } from "./interact.js";

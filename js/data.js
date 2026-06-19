@@ -1,4 +1,6 @@
-// Loads and caches JSON data (levels, species). Pure I/O — no game logic.
+// Loads and caches JSON data (species + localized strings). Pure I/O — no game
+// logic. There are no level/zone JSON files anymore: the Tower Defense board is
+// built programmatically (see tdBoardData.js).
 
 const cache = new Map();
 
@@ -6,14 +8,6 @@ async function fetchJson(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to load ${url}: ${res.status}`);
   return res.json();
-}
-
-export async function loadZone(id) {
-  const key = `zone:${id}`;
-  if (cache.has(key)) return cache.get(key);
-  const raw = await fetchJson(`./data/${id}.json`);
-  cache.set(key, raw);
-  return raw;
 }
 
 export async function loadSpecies() {

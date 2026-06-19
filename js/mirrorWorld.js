@@ -12,8 +12,8 @@
 import { SPRITE_SHEET_HEROES, ANIMATIONS_FPS } from "./constants.js";
 import { AURA_ANIM_DURATION } from "./knockbackAura.js";
 import { setGameMode } from "./gameMode.js";
-import { loadZone } from "./data.js";
 import { buildZone } from "./zone.js";
+import { tdBaseZone } from "./tdBoardData.js";
 import { evictZoneCache } from "./zoneCache.js";
 import { GAME_FRAME_SCHEMA } from "./net.js";
 import { isPushable, SLIDE_DURATION } from "./pushables.js";
@@ -243,7 +243,9 @@ async function loadZoneAndApplySnapshot(msg, opts) {
     return;
   }
   pendingZoneId = zoneId;
-  const loader = opts.zoneLoader || ((id) => loadZone(id).then(buildZone));
+  // The only zone is the programmatic Tower Defense board; switchRole injects
+  // the real loader, this default just mirrors it for standalone use/tests.
+  const loader = opts.zoneLoader || (() => buildZone(tdBaseZone()));
   zonePromise = loader(zoneId);
   try {
     const z = await zonePromise;
