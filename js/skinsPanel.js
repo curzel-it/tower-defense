@@ -195,21 +195,21 @@ function injectStyles() {
     }
     #skins-panel .skins-item {
       display: flex; flex-direction: column; align-items: center; gap: 6px;
-      padding: 12px 10px; background: #1f1f29; border: 1px solid #33333f;
+      padding: 12px 10px; background: #1f1f1f; border: 1px solid #2e2e2e;
       border-radius: var(--sb-surface-radius, 6px);
     }
-    #skins-panel .skins-item.is-selected { border-color: #6af; box-shadow: 0 0 0 1px #6af inset; }
-    #skins-panel .skins-preview { background: #11141b; border: 1px solid #2c2c38; border-radius: 4px; }
+    #skins-panel .skins-item.is-selected { border-color: #4a5a88; box-shadow: 0 0 0 1px #4a5a88 inset; }
+    #skins-panel .skins-preview { background: #11141b; border: 1px solid #2e2e2e; border-radius: 4px; }
     #skins-panel .skins-name { font-size: 13px; font-weight: bold; text-align: center; }
     #skins-panel .skins-rarity { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8a8a96; }
     #skins-panel .skins-rarity-rare { color: #ffd966; }
     #skins-panel .skins-locked { font-size: 16px; }
     #skins-panel .skins-btn {
-      background: #2a2a32; color: #eee; border: 1px solid #44444f;
+      background: #2a2a2a; color: #eee; border: 1px solid #444;
       padding: 7px 14px; border-radius: var(--sb-surface-radius, 6px); cursor: pointer;
       font-family: inherit; font-size: 12px;
     }
-    #skins-panel .skins-btn:hover:not(:disabled) { background: #353541; }
+    #skins-panel .skins-btn:hover:not(:disabled) { background: #353535; }
     #skins-panel .skins-btn:disabled { opacity: 0.6; cursor: default; }
     #skins-panel .skins-equip.is-on { background: #2e6b3e; border-color: #418a55; }
     #skins-panel .skins-buy { background: #2c4a6b; border-color: #3f6da0; color: #cfe6ff; }

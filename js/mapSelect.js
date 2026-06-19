@@ -143,7 +143,7 @@ function injectStyles() {
     #td-mapsel-overlay .td-mapsel-tier { margin-bottom: 18px; }
     #td-mapsel-overlay .td-mapsel-tier-head {
       display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px;
-      border-bottom: 1px solid #2c2c38; padding-bottom: 4px;
+      border-bottom: 1px solid #2e2e2e; padding-bottom: 4px;
     }
     #td-mapsel-overlay .td-mapsel-tier-name { font-weight: bold; letter-spacing: 1px; }
     #td-mapsel-overlay .td-mapsel-tier-lock { color: var(--sb-text-dim, #888); font-size: 11px; }
@@ -154,10 +154,10 @@ function injectStyles() {
     #td-mapsel-overlay .td-mapsel-map {
       position: relative; display: flex; flex-direction: column; gap: 6px;
       padding: 12px; text-align: left; cursor: pointer;
-      background: #1f1f29; border: 1px solid #33333f; border-radius: var(--sb-surface-radius, 6px);
+      background: #1f1f1f; border: 1px solid #2e2e2e; border-radius: var(--sb-surface-radius, 6px);
       color: var(--sb-text, #eee); font-family: inherit; font-size: 13px;
     }
-    #td-mapsel-overlay .td-mapsel-map:hover:not(:disabled) { background: #2a2a36; border-color: #4a4a58; }
+    #td-mapsel-overlay .td-mapsel-map:hover:not(:disabled) { background: #292929; border-color: #3a3a3a; }
     #td-mapsel-overlay .td-mapsel-map:focus-visible, #td-mapsel-overlay .td-mapsel-map.nav-focused {
       outline: 2px solid #6af; outline-offset: 2px;
     }
@@ -170,11 +170,11 @@ function injectStyles() {
 
     #td-mapsel-overlay .td-mapsel-controls { display: flex; justify-content: flex-end; margin-top: 8px; }
     #td-mapsel-overlay .td-mapsel-btn {
-      background: #2a2a32; color: #eee; border: 1px solid #44444f;
+      background: #2a2a2a; color: #eee; border: 1px solid #444;
       padding: 8px 16px; border-radius: var(--sb-surface-radius, 6px); cursor: pointer;
       font-family: inherit; font-size: 12px;
     }
-    #td-mapsel-overlay .td-mapsel-btn:hover { background: #353541; }
+    #td-mapsel-overlay .td-mapsel-btn:hover { background: #353535; }
 
     @media (max-width: 480px) {
       #td-mapsel-overlay .td-mapsel-card { box-sizing: border-box; min-width: 0; width: calc(100vw - 24px); padding: 20px 14px; }

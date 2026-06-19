@@ -392,7 +392,7 @@ function injectStyles() {
     }
     #td-dock .td-prog {
       flex: 1 1 auto; height: 12px; min-width: 80px;
-      background: #15151c; border: 1px solid #33333f; border-radius: var(--sb-surface-radius); overflow: hidden;
+      background: #11141b; border: 1px solid #2e2e2e; border-radius: var(--sb-surface-radius); overflow: hidden;
     }
     #td-dock .td-prog-fill { height: 100%; width: 0%; border-radius: var(--sb-surface-radius); transition: width 0.18s linear; }
     #td-dock .td-prog-fill.td-prog-time { background: linear-gradient(90deg, #ffb338, #ffd966); }
@@ -405,11 +405,11 @@ function injectStyles() {
     #td-dock .td-dock-hint { font-size: 11px; color: #8a8a96; text-align: center; }
 
     #td-dock .td-btn {
-      background: #2a2a32; color: #eee; border: 1px solid #44444f;
+      background: #2a2a2a; color: #eee; border: 1px solid #444;
       padding: 7px 12px; border-radius: var(--sb-surface-radius); cursor: pointer;
       font-family: inherit; font-size: 12px;
     }
-    #td-dock .td-btn:hover:not(:disabled) { background: #353541; }
+    #td-dock .td-btn:hover:not(:disabled) { background: #353535; }
     #td-dock .td-primary { background: #2a4a32; border-color: #3f6b4a; font-weight: bold; }
     #td-dock .td-primary:hover:not(:disabled) { background: #335a3d; }
     #td-dock .td-revive { background: #4a2a2a; border-color: #6b3f3f; }
@@ -483,11 +483,11 @@ function injectStyles() {
     #td-gameover .td-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     #td-gameover .td-actions { justify-content: center; margin-top: 18px; }
     #td-gameover .td-btn {
-      background: #2a2a32; color: #eee; border: 1px solid #44444f;
+      background: #2a2a2a; color: #eee; border: 1px solid #444;
       padding: 8px 14px; border-radius: var(--sb-surface-radius); cursor: pointer;
       font-family: inherit; font-size: 12px;
     }
-    #td-gameover .td-btn:hover { background: #353541; }
+    #td-gameover .td-btn:hover { background: #353535; }
     #td-gameover .td-primary { background: #2a4a32; border-color: #3f6b4a; }
 
     /* — Between-maps "path cleared" popup — celebratory, host-gated — */
