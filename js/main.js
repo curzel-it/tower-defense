@@ -78,12 +78,8 @@ import { setHostPaused } from "./hostPauseState.js";
 import { getRuntimeRole, getMode, getJoinCode, setRuntimeRole } from "./onlineMode.js";
 import { switchRole, setStateHandlers } from "./switchRole.js";
 import { installUiTokens } from "./uiTokens.js";
-import { isPvp, isPvpHostSetup, isTowerDefenseMode } from "./gameMode.js";
+import { isPvp, isTowerDefenseMode } from "./gameMode.js";
 import { codesFor } from "./keyBindings.js";
-import {
-  installPvpController, pvpGateInput, tickPvpFrame,
-} from "./pvpController.js";
-import { installOnlineDeathmatch, tickHostFrame as tickOnlineDeathmatch } from "./onlineDeathmatch.js";
 import { installTowerDefense, startTowerDefense, tickTowerDefense } from "./towerDefense.js";
 import { openMapSelect } from "./mapSelect.js";
 import { openSkins } from "./skinsPanel.js";
@@ -225,11 +221,6 @@ async function main() {
       })),
     };
   }
-  // PvP controller owns the match lifecycle + per-frame glue (and installs
-  // its own window.pvp debug hook). Wire it to the live state and the local
-  // avatar spawner here.
-  installPvpController(() => state, { setLocalPlayers });
-  installOnlineDeathmatch(() => state);
   // Tower Defense is offline-only and additive: it installs here (HUD,
   // barricade placement, input routing, debug hook) but does nothing until a
   // run boots via ?mode=td or the party panel.

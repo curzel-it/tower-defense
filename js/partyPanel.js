@@ -39,10 +39,8 @@ import { switchRole } from "./switchRole.js";
 import { showToast } from "./toast.js";
 import { isCoopMode, localPlayerCount, setLocalPlayerCount } from "./coopMode.js";
 import { registerMenuSurface, focusFirstIn } from "./menuNav.js";
-import { startMatch as startDeathmatch, exit as exitDeathmatch } from "./onlineDeathmatch.js";
-import { exitPvp } from "./pvpController.js";
 import { startTowerDefense } from "./towerDefense.js";
-import { isPvp, isPvpHostSetup, setPvpHostSetup, isTowerDefenseMode } from "./gameMode.js";
+import { isTowerDefenseMode } from "./gameMode.js";
 import { openMapSelect } from "./mapSelect.js";
 import { mapById, firstMapId } from "./tdMaps.js";
 import { el, showOnly } from "./dom.js";
@@ -142,19 +140,8 @@ export function closePartyPanel() {
   lastFocusedView = null;
 }
 
-// User-initiated dismiss (Close button, Escape, backdrop click). While
-// hosting an Online PvP setup the dialog is the lobby: dismissing it lifts the
-// host-world freeze and, if a friend has already joined, starts the deathmatch
-// (which teleports everyone into the arena). With no peer yet we just unfreeze
-// so the host isn't stranded in a frozen world while waiting. Every other view
-// (and all programmatic closes elsewhere) just close.
+// User-initiated dismiss (Close button, Escape, backdrop click). Just close.
 function dismissPartyPanel() {
-  if (isPvpHostSetup()) {
-    setPvpHostSetup(false);
-    closePartyPanel();
-    if (getKnownPeers().length >= 1) startDeathmatch();
-    return;
-  }
   closePartyPanel();
 }
 
@@ -322,26 +309,8 @@ function renderHostingOnlineView() {
   if (showStart) hoEndControl.reset();
 }
 
-function onStartMatchClick() {
-  if (getKnownPeers().length < 1) {
-    showToast("Wait for a friend to join before starting PvP.", "hint");
-    return;
-  }
-  setPvpHostSetup(false);
-  closePartyPanel();
-  startDeathmatch();
-}
-
 async function endOnlineSession() {
-  // During a live deathmatch, tear the match down first (resets game mode to
-  // co-op, clears the arena + overlays, tells guests) before leaving the
-  // session entirely — otherwise the rebuilt offline state would still be in
-  // pvp mode.
-  if (isPvp()) {
-    try { await exitDeathmatch(); } catch (e) { console.error("[party] exitDeathmatch", e); }
-  }
   onlineHostMode = null;
-  setPvpHostSetup(false);
   switchRole("offline")
     .then(() => showToast("Session ended", "hint"))
     .catch((e) => console.error("[party] switchRole(offline) from host", e));
@@ -369,16 +338,12 @@ function buildHostingOfflineView() {
 }
 
 function renderHostingOfflineView() {
-  const pvp = isPvp();
-  offDescEl.textContent = pvp
-    ? "Local PvP — last ninja standing in the arena. One controller per player recommended."
-    : "Local co-op — up to 4 players share this device.";
+  offDescEl.textContent = "Local co-op — up to 4 players share this device.";
   const count = localPlayerCount();
   for (const btn of offToggleBtns) {
     btn.classList.toggle("active", parseInt(btn.dataset.count, 10) === count);
   }
-  // Tower Defense is a co-op flavor only — no PvP TD.
-  if (offTdBtn) offTdBtn.style.display = pvp ? "none" : "";
+  if (offTdBtn) offTdBtn.style.display = "";
 }
 
 function onCountToggle(n) {
@@ -410,7 +375,7 @@ function renderGuestView() {
   const hostPid = getHostPlayerId();
   const hostName = (hostPid && getNameForPlayerId(hostPid)) || "the host";
   const slot = getMySlot();
-  const flavor = isPvp() ? "PvP deathmatch" : "co-op session";
+  const flavor = "co-op session";
   const where = slot != null
     ? `You're in ${hostName}'s ${flavor} (slot ${slot}).`
     : `Joining ${hostName}'s ${flavor}…`;
@@ -454,8 +419,7 @@ function renderChip() {
   const role = getRuntimeRole();
   if (role === "host") {
     const peers = getKnownPeers();
-    const flavor = isPvp() ? "PvP" : "Hosting";
-    chipLabel.textContent = `${flavor} · ${peers.length + 1}/4`;
+    chipLabel.textContent = `Hosting · ${peers.length + 1}/4`;
     chip.style.display = "flex";
   } else if (role === "guest") {
     const slot = getMySlot();
@@ -480,7 +444,7 @@ function renderPanel() {
   } else if (role === "guest") {
     showOnly(views, "guest");
     renderGuestView();
-  } else if (isCoopMode() || isPvp()) {
+  } else if (isCoopMode()) {
     showOnly(views, "hostingOffline");
     renderHostingOfflineView();
   } else {
