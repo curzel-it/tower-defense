@@ -30,6 +30,10 @@ import { installGuestLoadoutSync, uninstallGuestLoadoutSync } from "./guestLoado
 import { installGiantNet, uninstallGiantNet } from "./giantMode.js";
 import { installGuestSelfHpSync, uninstallGuestSelfHpSync } from "./guestSelfHpSync.js";
 import { installMirrorWorld, uninstallMirrorWorld } from "./mirrorWorld.js";
+import { loadZone } from "./data.js";
+import { buildZone } from "./zone.js";
+import { tdBaseZone } from "./tdBoardData.js";
+import { TD_ZONE_ID } from "./constants.js";
 import { installPredictedSelf, uninstallPredictedSelf } from "./predictedSelf.js";
 import { installGuestInputForwarder, uninstallGuestInputForwarder } from "./guestInputForwarder.js";
 import { installGuestEvents, uninstallGuestEvents } from "./guestEvents.js";
@@ -203,7 +207,13 @@ async function setupRole(target, opts) {
     setPendingGuestCode(opts.code);
     if (stateHandlers.onEnterGuest) await stateHandlers.onEnterGuest();
     const n = ensureNet();
-    installMirrorWorld(n);
+    // The TD board is built in code (tdBaseZone), not loaded from JSON, so the
+    // guest's mirror must build it the same way when the host's snapshot zone is
+    // the TD board. Any other zone id still routes through the JSON loader.
+    const zoneLoader = (id) => id === TD_ZONE_ID
+      ? buildZone(tdBaseZone())
+      : loadZone(id).then(buildZone);
+    installMirrorWorld(n, { zoneLoader });
     installGuestInputForwarder(n);
     installPredictedSelf(n);
     installGuestEvents(n);

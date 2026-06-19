@@ -9,9 +9,8 @@
 // game is untouched: TD is an additive, transient mode (no save writes, its own
 // board, its own HUD).
 
-import { TD_ZONE_ID } from "./constants.js";
 import { BIOME } from "./biomes.js";
-import { loadZone } from "./data.js";
+import { tdBaseZone } from "./tdBoardData.js";
 import { buildZone, isWalkable } from "./zone.js";
 import { createPlayer, updatePlayer, updateGuestAvatar } from "./player.js";
 import { pollInput } from "./input.js";
@@ -263,9 +262,9 @@ async function loadMap(mapId) {
   const state = getState();
   if (!state) return;
   const difficulty = difficultyFor(mapId);
-  // The cached base zone stays pristine (loadZone caches it), so generation
-  // re-randomises each map. Hero starts come back on the new path.
-  const rawZone = { ...(await loadZone(TD_ZONE_ID)) };
+  // tdBaseZone() returns a fresh board each call, so generation re-randomises
+  // each map. Hero starts come back on the new path.
+  const rawZone = tdBaseZone();
   const map = generateMap(rawZone, difficulty);
   rawZone.td = { ...(rawZone.td || {}), heroSpawns: map.heroSpawns };
   const zone = buildZone(rawZone);
