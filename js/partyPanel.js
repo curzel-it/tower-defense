@@ -37,7 +37,6 @@ import {
 } from "./onlineBootstrap.js";
 import { switchRole } from "./switchRole.js";
 import { showToast } from "./toast.js";
-import { isCreativeMode } from "./creativeMode.js";
 import { isCoopMode, localPlayerCount, setLocalPlayerCount } from "./coopMode.js";
 import { registerMenuSurface, focusFirstIn } from "./menuNav.js";
 import { startMatch as startDeathmatch, exit as exitDeathmatch } from "./onlineDeathmatch.js";
@@ -76,7 +75,6 @@ let views = { single: null, hostingOnline: null, hostingOffline: null, guest: nu
 // Single-player view widgets.
 let spJoinInput = null;
 let spErrorEl = null;
-let spOnlineHostBtns = null; // [coop, pvp] — disabled in creative mode
 
 // Hosting-online widgets we mutate on session-state updates.
 let hoDescEl = null;
@@ -224,7 +222,6 @@ function buildSingleView() {
   spErrorEl = el("p", { class: "party-error", style: { display: "none" } });
 
   const onlineCoop = hostButton("party-online-coop", "Online co-op", () => onHostOnlineClick("coop"));
-  spOnlineHostBtns = [onlineCoop];
 
   return el("div", { class: "party-view", dataset: { view: "single" } }, [
     el("h1", { text: "Multiplayer" }),
@@ -251,12 +248,6 @@ function hostButton(id, label, handler) {
 }
 
 function renderSingleView() {
-  const creative = isCreativeMode();
-  for (const btn of spOnlineHostBtns) {
-    btn.disabled = creative;
-    btn.title = creative ? "Leave creative mode first." : "";
-    btn.classList.toggle("party-disabled", creative);
-  }
   const err = getLastJoinError();
   if (err) {
     spErrorEl.textContent = friendlyReason(err);
@@ -560,10 +551,6 @@ function onJoinClick() {
 }
 
 function onHostOnlineClick() {
-  if (isCreativeMode()) {
-    showToast("Leave creative mode first.", "hint");
-    return;
-  }
   // Co-op only. Become the host, then start the authoritative Tower Defense run
   // — guests who join with the invite code mirror it (reconcileGuestHeroes adds
   // each a hero). The panel stays open on the hosting view so the host can share
@@ -603,10 +590,6 @@ function onOfflineCoopClick() {
 }
 
 function onTowerDefenseClick() {
-  if (isCreativeMode()) {
-    showToast("Leave creative mode first.", "hint");
-    return;
-  }
   closePartyPanel();
   startTowerDefense();
 }
@@ -801,7 +784,6 @@ export function _resetPartyPanelForTesting() {
   views = { single: null, hostingOnline: null, hostingOffline: null, guest: null };
   spJoinInput = null;
   spErrorEl = null;
-  spOnlineHostBtns = null;
   hoDescEl = null;
   hoCodeEl = null;
   hoCopyBtn = null;

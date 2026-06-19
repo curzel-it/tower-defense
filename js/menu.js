@@ -9,7 +9,6 @@ import { getSettings, saveSettings } from "./settings.js";
 import { playSfx } from "./audio.js";
 import { APP_VERSION } from "./constants.js";
 import { clearProgress } from "./save.js";
-import { isCreativeMode } from "./creativeMode.js";
 import { openSkins } from "./skinsPanel.js";
 import { matchesAction } from "./keyBindings.js";
 import { glyphForAction } from "./inputGlyphs.js";
@@ -17,8 +16,6 @@ import { initKeyBindingsScreen, renderControlsList, resetCaptures, consumeMenuKe
 import { getActiveInputDevice, onActiveInputDeviceChange } from "./activeInputDevice.js";
 import { registerMenuSurface, focusFirstIn } from "./menuNav.js";
 import { isCoopActive } from "./coopMode.js";
-import { exportSave, importSave } from "./saveBackup.js";
-import { initCreativeZoneTools, saveZoneNow, exportZone, resetZone } from "./creativeZoneTools.js";
 import { openPartyPanel, isPartyPanelOpen } from "./partyPanel.js";
 import { openAccountPanel, isAccountPanelOpen } from "./accountPanel.js";
 import { onAccountChange, getUser, getToken, isSignedIn, captureSession, restoreSession } from "./accountSession.js";
@@ -49,24 +46,18 @@ function isAnotherModalOpen() {
 
 let root = null;
 let open = false;
-let screen = "pause"; // "pause" | "settings" | "credits" | "controls" | "creative"
-
-// Optional getter the host wires in at install time. Provides access to
-// the live game state (rawZone + current zone id) without coupling the
-// menu module to main.js. Returns null when no state is wired or when
-// installMenu was called without a getter (e.g. early-init / tests).
-let getState = () => null;
+let screen = "pause"; // "pause" | "settings" | "credits" | "controls"
 
 // Desktop-only probe — matches the touch overlay's gate in js/touch.js.
-// Creative-mode editor + Save / Reset / Export are click-and-drag tools
-// that don't have a sensible thumb UI, so we hide them on coarse pointers.
+// Used to hide the touch-controls toggle row on coarse pointers.
 function isDesktop() {
   if (typeof matchMedia === "undefined") return true;
   return !matchMedia("(pointer: coarse)").matches;
 }
 
-export function installMenu(stateGetter) {
-  if (typeof stateGetter === "function") getState = stateGetter;
+// installMenu historically accepted a live-state getter (for the creative zone
+// tools). Those are gone; the param is kept so existing call sites stay valid.
+export function installMenu() {
   if (root) return root;
   root = el("div", {
     id: "menu",
@@ -79,7 +70,6 @@ export function installMenu(stateGetter) {
         <button id="menu-open-account">Account</button>
         <button id="menu-open-skins">Skins</button>
         <button id="menu-open-settings">Settings</button>
-        <button id="menu-open-creative" data-creative-only>Creative tools…</button>
         <button id="menu-open-credits">Credits</button>
         <button id="menu-new-game" data-guest-hidden>New game (wipe save)</button>
       </div>
@@ -179,20 +169,6 @@ export function installMenu(stateGetter) {
         <button id="menu-credits-back">Back</button>
       </div>
     </div>
-    <div class="menu-card" data-screen="creative">
-      <h1>Creative tools</h1>
-      <div class="menu-row menu-controls menu-stack">
-        <button id="menu-export-save" data-creative-only>Export save (copy JSON)</button>
-        <button id="menu-import-save" data-creative-only>Import save (paste JSON)</button>
-        <button id="menu-save-zone" data-creative-only data-desktop-only data-editor-only>Save zone (flush to server)</button>
-        <button id="menu-export-zone" data-creative-only data-desktop-only>Export zone JSON…</button>
-        <button id="menu-reset-zone" data-creative-only data-desktop-only data-editor-only>Reset zone (revert to shipped)</button>
-        <button id="menu-open-map-editor" data-creative-only data-desktop-only data-editor-only>Map editor…</button>
-      </div>
-      <div class="menu-row menu-controls">
-        <button id="menu-creative-back">Back</button>
-      </div>
-    </div>
   `,
     style: {
       position: "fixed",
@@ -211,8 +187,6 @@ export function installMenu(stateGetter) {
   injectStyles();
   bindWidgets();
   initKeyBindingsScreen(root);
-  initCreativeZoneTools(() => getState());
-  applyCreativeModeVisibility();
   applyRoleVisibility();
   // Keep the role gates live across role transitions — if the menu is
   // already open when the user joins a session, the buttons should
@@ -245,32 +219,6 @@ export function installMenu(stateGetter) {
 }
 
 export function isMenuOpen() { return open; }
-
-// Save export/import are creative-mode-only — they map onto the Rust
-// build's "Save" menu entry (game/src/gameui/game_menu.rs only shows
-// save-related actions when GameMode::Creative). In the regular
-// player-facing build, progress is saved automatically and there's no
-// need to expose JSON blobs.
-
-function applyCreativeModeVisibility() {
-  const creative = isCreativeMode();
-  const desktop = isDesktop();
-  const editor = !!getUser()?.editor;
-  // Three attributes, ANDed: a [data-creative-only] entry hides outside
-  // creative; [data-desktop-only] additionally hides on coarse-pointer
-  // devices where the click-and-drag editor + Save/Export wouldn't be
-  // usable; [data-editor-only] additionally hides for non-editor accounts
-  // (the server enforces this too — a non-editor PUT gets 403). The
-  // server-backed zone tools (Save/Reset/Map editor) carry all three.
-  root.querySelectorAll("[data-creative-only]").forEach((node) => {
-    const requiresDesktop = node.hasAttribute("data-desktop-only");
-    const requiresEditor = node.hasAttribute("data-editor-only");
-    const show = creative
-      && (!requiresDesktop || desktop)
-      && (!requiresEditor || editor);
-    node.style.display = show ? "" : "none";
-  });
-}
 
 // "New Game" and "Clear cache" both wipe localStorage, which includes
 // the online UUID this tab uses as its stable identity. A guest doing
@@ -350,9 +298,6 @@ function bindWidgets() {
   };
   onAccountChange((user) => {
     syncAccountLabel(user);
-    // The editor-only zone tools depend on user.editor — re-sync visibility
-    // so they appear/disappear on sign-in/out without reopening the menu.
-    applyCreativeModeVisibility();
   });
   syncAccountLabel(getUser());
   root.querySelector("#menu-open-skins").addEventListener("click", () => { closeMenu(); openSkins(); });
@@ -369,23 +314,12 @@ function bindWidgets() {
     syncFullscreenLabel();
   }
   root.querySelector("#menu-open-credits").addEventListener("click", () => showScreen("credits"));
-  root.querySelector("#menu-open-creative").addEventListener("click", () => showScreen("creative"));
   root.querySelector("#menu-settings-back").addEventListener("click", () => showScreen("pause"));
   root.querySelector("#menu-open-controls").addEventListener("click", () => showScreen("controls"));
   root.querySelector("#menu-controls-back").addEventListener("click", () => showScreen("settings"));
   // The Key Bindings screen's own controls (device/player tabs, reset) are
   // wired by initKeyBindingsScreen().
   root.querySelector("#menu-credits-back").addEventListener("click", () => showScreen("pause"));
-  root.querySelector("#menu-creative-back").addEventListener("click", () => showScreen("pause"));
-  root.querySelector("#menu-export-save").addEventListener("click", exportSave);
-  root.querySelector("#menu-import-save").addEventListener("click", importSave);
-  root.querySelector("#menu-save-zone").addEventListener("click", saveZoneNow);
-  root.querySelector("#menu-export-zone").addEventListener("click", exportZone);
-  root.querySelector("#menu-reset-zone").addEventListener("click", resetZone);
-  root.querySelector("#menu-open-map-editor").addEventListener("click", () => {
-    closeMenu();
-    window.creative?.openMapEditor?.();
-  });
   root.querySelector("#menu-new-game").addEventListener("click", async () => {
     const ok = await showConfirm({
       title: "Start a new game?",
