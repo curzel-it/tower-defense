@@ -378,143 +378,11 @@ async function main() {
       tickTowerDefense(dt, { renderer, hud, biomeAnim });
       return;
     }
-    // Pause is offline / local co-op only: freeze the sim on any overlay
-    // (menu, dialogue, party panel, …) or when the active controller drops.
-    // Hosting never freezes the shared world for a local overlay — that
-    // would strand guests in a dead zone — so the gate is role-aware.
-    const overlayOpen = isMenuOpen() || isDialogueOpen() || isGameOverOpen() || isShopOpen() || isFastTravelOpen() || isMessageOpen() || isPartyPanelOpen() || isAccountPanelOpen();
-    const localPause = (overlayOpen || isControllerPaused()) && getRuntimeRole() !== "host";
-    // While a host is still setting up an Online PvP match (sending invite
-    // links, before "Start match"), freeze the host's own world so monsters
-    // don't roam during setup. This is host-local: setHostPaused stays tied to
-    // localPause so we don't flash a spurious "host paused" overlay to guests
-    // (who haven't joined the arena yet anyway).
-    const paused = localPause || isPvpHostSetup();
-    // Tell guests when our local sim is frozen so their overlay can
-    // show "Host paused the game" instead of the generic "Host
-    // lagging…" — the no-op-when-not-host gate in setHostPaused keeps
-    // this cheap in offline / local-coop. With the host-online carve-out
-    // above this only fires now on a genuine host stall, not a menu.
-    setHostPaused(localPause);
-    const input = pollInput();
-    if (!paused) {
-      // Online-host + overlay open: the sim keeps running (so guests
-      // aren't stranded in a frozen zone), but the host's OWN avatar must
-      // not wander off behind the dialog — feed it a neutral input. The
-      // network-driven guest slots below keep their live wire input, so
-      // guests can still move around while the host sits in a menu.
-      // Offline / local co-op never reaches here with an overlay open
-      // (that's `paused` → the else branch), so this is host-online only.
-      const hostInput = overlayOpen ? { events: [], held: new Set() } : input;
-      // Skip the per-player update for dead avatars — pollInput still
-      // drains their event queue, so a held key doesn't flood the
-      // player on revive. Without this gate a "dead-but-waiting" host
-      // would silently walk around invisibly while spectating guests.
-      if (!isPlayerDead(0)) updatePlayer(state.player, pvpGateInput(0, hostInput), dt, state.zone);
-      // Network-guest avatars (playerId set) own their own tile path: the
-      // host only animates committed steps via updateGuestAvatar — never
-      // runs movement decisions for them (docs/multiplayer.md).
-      // Local-coop slots (playerId null) still run the full input-driven
-      // updatePlayer.
-      if (state.player2) {
-        if (state.player2.playerId) {
-          updateGuestAvatar(state.player2, dt, state.zone);
-        } else {
-          const input2 = pollInput(2);
-          if (!isPlayerDead(state.player2.index | 0)) {
-            updatePlayer(state.player2, pvpGateInput(1, input2), dt, state.zone);
-          }
-        }
-      }
-      for (const s of state.players) {
-        if (s.playerId) {
-          updateGuestAvatar(s.player, dt, state.zone);
-        } else {
-          const inputN = pollInput(s.slot);
-          if (!isPlayerDead(s.player.index | 0)) {
-            updatePlayer(s.player, pvpGateInput(s.player.index | 0, inputN), dt, state.zone);
-          }
-        }
-      }
-      maybeTeleport(state);
-      // Offline / local co-op: the camera averages every live player so
-      // co-op players stay on one shared screen (dead players drop out of
-      // the average). Online hosts instead follow only the host avatar —
-      // each guest renders an independent window centred on themselves, so
-      // the host's own window tracks the host. simulationViewports keeps
-      // every off-camera guest's region alive (see below).
-      applyCamera();
-      updateVisibleEntities(state.zone, simulationViewports(state));
-      tickShooting(dt);
-      tickMelee(dt);
-      tickMobs(state.zone, allPlayers(state), dt);
-      tickMonsterFusion(state.zone);
-      tickMinionSpawning(state.zone, state.player, dt);
-      // Combat now iterates every live player for melee monster damage
-      // resolution; bullets carry _playerIndex for catcher refunds and
-      // friendly-fire gating.
-      tickCombat(state.zone, allPlayers(state), dt);
-      // Passive knockback aura: reacts to the damage tickCombat just resolved
-      // (low HP + enemy in range) before health regen runs.
-      tickKnockbackAura(state.zone, allPlayers(state), dt);
-      tickAfterDialogue(state.zone, dt);
-      tickNpcInterception(state, dt);
-      tickPuzzles(state.zone, state.player);
-      tickCutscenes(state.zone, state.player, dt);
-      tickTrails(state.zone, state.player, dt);
-      tickPushables(state.zone, dt);
-      tickPlayerHealth(dt);
-      tickFastTravel(dt);
-      // PvP runs its own death + win/lose path; co-op keeps the inline-toast /
-      // P1-game-over path. Online PvP is host-authoritative (onlineDeathmatch);
-      // the offline/local arena uses pvpController. Both are realtime.
-      if (isPvp()) {
-        if (getRuntimeRole() === "offline") tickPvpFrame();
-        else tickOnlineDeathmatch(dt);
-      } else {
-        // P2 death is handled inline (toast + hide bar). Only P1 death
-        // halts the game with the Game Over modal.
-        handleCoopDeaths(state);
-        handleHostState(state);
-      }
-    } else {
-      // When paused, keep the camera tracking the player so on resume
-      // there's no jolt, but don't bother re-running the visibility pass
-      // (the entity ticks are gated by `paused` above and won't read it).
-      applyCamera();
-    }
-    tickBiomeAnimation(biomeAnim, dt);
-    tickEntities(dt);
-    setInteractPrompt(tickInteract());
-    updateTouchCombat();
-    // Pass live players to the renderer so P2 sorts correctly with the
-    // entity z-stack and not just on top as a separate draw call. Dead
-    // co-op players are filtered out so they vanish from the screen
-    // until the next zone transition respawns them. Online hosts include
-    // every guest avatar here — the host's camera follows only its own
-    // avatar, but the host's screen still needs to render the guests (or
-    // "host can't see guests" lingers).
-    const renderPlayers = livePlayersForRender(state);
-    if (sliceCount() > 1) {
-      renderViewports(renderer, state.zone, buildViewports(state), renderPlayers, biomeAnim.frame);
-    } else {
-      // Pin the darkness cone to state.player explicitly: renderPlayers drops
-      // dead avatars, so on death the live-player array is empty and the cone
-      // would otherwise lose its center. state.player persists through death,
-      // so the limited-visibility overlay stays centered on the corpse instead
-      // of vanishing (and the renderer never dereferences an undefined focus).
-      render(renderer, state.zone, state.camera, renderPlayers, biomeAnim.frame, {
-        focusPlayer: state.player,
-      });
-    }
-    updateHud(hud, {
-      zoneId: state.zone.id,
-      fps: 1 / dt,
-      showFps: getSettings().showFps,
-      player: state.player,
-    });
-    updateAmmoHud();
-    updateCoinHud();
+    // Every shipped flow is a Tower Defense run — offline solo, local
+    // split-screen co-op, or an online-co-op host. tickTowerDefense (above)
+    // owns the whole sim + render frame and no-ops until a board exists, so a
+    // host sitting in the lobby before "Start" is safely idle here. The old
+    // SneakBit normal-game / PvP frame is gone.
   });
 
 }
@@ -531,60 +399,23 @@ function maybeFallBackToOffline() {
   switchRole("offline").then(() => { mirrorDeathHandled = false; });
 }
 
-// Build the initial offline state from local save + the configured zone.
-// Module-level `state` is populated here; consumers that captured `()
-// => state` keep working because they read the binding lazily.
+// Build the initial offline state. There is no SneakBit overworld to load
+// anymore: the offline boot is a bare stub (camera only) and the real board is
+// built by startTowerDefense() → loadMap() → tdBaseZone(). This mirrors the
+// guest stub shape; the camera/cameras are preserved across role switches so
+// installAutoZoom's captured reference stays stable.
 async function initOfflineState() {
-  const urlZone = parseInt(new URLSearchParams(location.search).get("zone"), 10);
-  let saved = Number.isFinite(urlZone) ? null : loadProgress();
-  // Guard against a save polluted by an older build that persisted the PvP
-  // arena: never boot into it. Drop the save so we fall back to the starting
-  // zone, as if no progress existed. (An explicit ?zone=1301 still works.)
-  if (saved?.zoneId === PVP_ARENA_ZONE_ID) saved = null;
-  const startId = Number.isFinite(urlZone) ? urlZone : (saved?.zoneId ?? STARTING_ZONE_ID);
-  const zoneRaw = await loadZone(startId).then(r => { bumpLoadingProgress("Zone loaded"); return r; });
-  const zone = buildZone(zoneRaw);
-  setupPuzzles(zone);
-  setupCutscenes(zone);
-  getZoneCache(zone);
-  const player = createPlayer();
-  if (saved && saved.x != null && saved.y != null) {
-    applySavedSpawn(player, zone, saved);
-  } else if (startId !== STARTING_ZONE_ID) {
-    snapToEntry(player, zone);
-  }
-  zone.spawnPoint = computeEntryTile(zone);
-  const player2 = isCoopMode() ? makeCoopP2(player, zone) : null;
-  // Preserve camera across role switches — the existing camera object
-  // captured by installAutoZoom etc. must remain referentially stable.
-  // The slice-camera array is preserved too, with cameras[0] kept as the
-  // alias of the stable camera (recomputeSlices re-derives the rest).
   const camera = state?.camera ?? createCamera();
   const cameras = Array.isArray(state?.cameras) ? state.cameras : [camera];
   cameras[0] = camera;
-  state = {
-    zone,
-    rawZone: zoneRaw,
-    player,
-    player2,
-    players: [],
-    camera,
-    cameras,
-    lastTile: { x: player.tileX, y: player.tileY },
-    lastTile2: player2 ? { x: player2.tileX, y: player2.tileY } : null,
-  };
-  saveProgress(state);
+  state = { zone: null, rawZone: null, player: null, player2: null, players: [], camera, cameras };
 }
 
-// switchRole onEnterOffline callback. Re-runs the offline-state build so
-// a player coming back from a session lands on whatever their local save
-// said, untouched by the session. Differs from initOfflineState only in
-// that it can be called multiple times — initOfflineState already
-// handles re-entry correctly via the same code path.
+// switchRole onEnterOffline callback. Re-runs the offline-state build so a
+// player returning from a session lands back on a clean offline stub (a fresh
+// TD run is started explicitly afterwards).
 async function rebuildOfflineState() {
   await initOfflineState();
-  markVisited(state.zone.id);
-  if (state.zone.soundtrack) playTrack(state.zone.soundtrack);
 }
 
 // switchRole onEnterGuest callback. The guest's view comes from the
