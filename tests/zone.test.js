@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildZone, isWalkable, isEntityBlocked } from "../js/zone.js";
 import { loadSpeciesData } from "../js/species.js";
-import { _setCreativeModeForTesting } from "../js/creativeMode.js";
 
 loadSpeciesData([
   { id: 1006, entity_type: "Building", is_rigid: true, sprite_sheet_id: 1010,
@@ -159,7 +158,7 @@ test("NPC 1x2 only blocks its feet tile, head tile is walkable", () => {
   assert.equal(isEntityBlocked(w, 1, 2), true);
 });
 
-test("creative mode walks through Building and closed Gate (is_rigid dropped)", () => {
+test("Building blocks its floor tile and a closed Gate blocks its tile", () => {
   storage._resetStorageForTesting();
   const w = buildZone({
     ...TINY,
@@ -170,15 +169,8 @@ test("creative mode walks through Building and closed Gate (is_rigid dropped)", 
       { id: 5, species_id: 2010, frame: { x: 3, y: 3, w: 1, h: 1 } },
     ],
   });
-  // Non-creative: building blocks its floor tile (0,2); closed gate blocks (3,3).
-  _setCreativeModeForTesting(false);
   assert.equal(isEntityBlocked(w, 0, 2), true);
   assert.equal(isEntityBlocked(w, 3, 3), true);
-  // Creative: both pass through.
-  _setCreativeModeForTesting(true);
-  assert.equal(isEntityBlocked(w, 0, 2), false);
-  assert.equal(isEntityBlocked(w, 3, 3), false);
-  _setCreativeModeForTesting(false);
 });
 
 test("entity hidden by display_conditions does not block", () => {

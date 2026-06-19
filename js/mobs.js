@@ -12,7 +12,6 @@
 
 import { getSpecies } from "./species.js";
 import { isWalkable } from "./zone.js";
-import { isCreativeMode } from "./creativeMode.js";
 import { TILE_SIZE } from "./constants.js";
 
 const VISION_TILES = 6;            // chase trigger range (Manhattan)
@@ -40,11 +39,6 @@ const ALL_DIRS = ["up", "down", "left", "right"];
 // dead) chase mobs fall back to wandering like normal.
 export function tickMobs(zone, player, dt) {
   if (!zone?.entities) return;
-  // Creative mode freezes every AI-driven entity in place so the level
-  // designer can lay out monsters / NPCs without them wandering off.
-  // Mirrors Rust movement/movement_directions.rs::perform_movement
-  // short-circuiting in creative.
-  if (isCreativeMode()) return;
   const players = Array.isArray(player) ? player.filter(Boolean) : (player ? [player] : []);
   // Only tick mobs whose frame overlaps the viewport this frame. Mirrors
   // Rust's update_hitmaps gating: a monster that has wandered off-screen

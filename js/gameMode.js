@@ -10,7 +10,6 @@
 
 export const GAME_MODE = {
   coop: "coop",       // RealTimeCoOp — the normal game
-  creative: "creative",
   pvp: "pvp",         // realtime deathmatch (local or online)
   td: "td",           // tower defense — solo/offline squad defense (?mode=td)
 };
@@ -37,8 +36,7 @@ export function getGameMode() {
 }
 
 export function setGameMode(mode) {
-  if (mode === GAME_MODE.coop || mode === GAME_MODE.creative ||
-      mode === GAME_MODE.pvp || mode === GAME_MODE.td) {
+  if (mode === GAME_MODE.coop || mode === GAME_MODE.pvp || mode === GAME_MODE.td) {
     current = mode;
   }
   return current;

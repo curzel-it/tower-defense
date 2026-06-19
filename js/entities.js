@@ -22,7 +22,6 @@ import { pushableRenderOffset } from "./pushables.js";
 import { knockbackHopOffset } from "./mobs.js";
 import { coinRenderOffset } from "./coinDrops.js";
 import { shouldBeVisible } from "./entityVisibility.js";
-import { isCreativeMode } from "./creativeMode.js";
 import { isDying, DEATH_SPRITE } from "./deathAnimation.js";
 import { isVanishing, vanishAlpha, vanishOverlay } from "./vanishEffect.js";
 import { isGiant } from "./giantMode.js";
@@ -67,17 +66,6 @@ function isEntityMoving(e, sp) {
   if (e._ai?.step) return true;
   if (e.moving) return true;
   return false;
-}
-
-// In creative mode hint signs render from the inventory sheet at their
-// inventory_texture_offset instead of the static_objects placed-sign
-// sprite. Returns null when no re-skin applies.
-function creativeHintReskin(sp) {
-  if (!isCreativeMode()) return null;
-  if (sp?.entity_type !== "Hint") return null;
-  const off = sp.inventory_texture_offset;
-  if (!off) return null;
-  return { row: off[0] | 0, col: off[1] | 0 };
 }
 
 function makePlayerSortItem(player) {
@@ -303,25 +291,18 @@ function draw(ctx, e, camera) {
   // needing the per-entity lifespan in the snapshot.
   if (isDying(e)) { drawDeath(ctx, e, camera); return; }
 
-  // Teleporters and hints are editing aids — the "T"/sign markers only
-  // make sense in the map editor. In normal gameplay teleporters are
-  // invisible portals and hints are invisible trigger tiles, so skip
-  // rendering entirely rather than blitting a placeholder sprite that
-  // leaks a stray line or dot onto the map.
-  if (!isCreativeMode() &&
-      (sp?.entity_type === "Teleporter" || sp?.entity_type === "Hint")) {
+  // Teleporters and hints are invisible portals / trigger tiles in normal
+  // gameplay, so skip rendering them rather than blitting a placeholder sprite
+  // that leaks a stray line or dot onto the map.
+  if (sp?.entity_type === "Teleporter" || sp?.entity_type === "Hint") {
     return;
   }
 
-  // Creative-mode hint re-skin: in the Rust core hint signs render from
-  // the inventory sheet at their `inventory_texture_offset` instead of
-  // the placed-sign sprite on static_objects. Same one-off override here.
-  const reskin = creativeHintReskin(sp);
-  const sheet = reskin ? getSprite("inventory") : getEntitySheet(sp);
+  const sheet = getEntitySheet(sp);
   if (!sheet) return;
 
   const { x, y, w, h } = e.frame;
-  const frames = reskin ? 1 : Math.max(1, sp.frames);
+  const frames = Math.max(1, sp.frames);
   let frame = 0;
   let dirRow = 0;
   const moving = isEntityMoving(e, sp);
@@ -329,20 +310,18 @@ function draw(ctx, e, camera) {
   // mirrors the Rust core's AnimatedSprite::update (gated only on
   // number_of_frames). Movement selects the row, never whether we animate;
   // gating frames on `moving` froze idle NPCs on their first still frame.
-  if (!reskin && frames > 1) {
+  if (frames > 1) {
     frame = Math.floor(animClock * ANIMATIONS_FPS) % frames;
   }
-  if (!reskin && sp.directional) {
+  if (sp.directional) {
     const dirKey = (e.direction || "down").toLowerCase();
     const table = moving ? DIR_ROW_MOVING : DIR_ROW_STILL;
     dirRow = table[dirKey] ?? DIR_ROW_STILL.down;
   }
 
   const offsetX = (e._frameOffsetX | 0);
-  // inventory_texture_offset is [row, col]; everything else uses
-  // texture_x / texture_y (cols, rows).
-  const baseX = reskin ? reskin.col : sp.texture_x;
-  const baseY = reskin ? reskin.row : sp.texture_y;
+  const baseX = sp.texture_x;
+  const baseY = sp.texture_y;
   const sx = (baseX + offsetX + frame * w) * TILE_SIZE;
   const sy = (baseY + dirRow * h) * TILE_SIZE;
   const sw = w * TILE_SIZE;

@@ -22,7 +22,6 @@ import { playSfx } from "./audio.js";
 import { findPushableAt, pushOneTile, startSlide } from "./pushables.js";
 import { findGateAt, tryUnlockGate } from "./gateUnlock.js";
 import { showToast } from "./toast.js";
-import { isCreativeMode } from "./creativeMode.js";
 import { resolveSkinColumn } from "./skins.js";
 
 // Hero sprites live on the `heroes` sheet at columns (1, 5, 9, 13) — one
@@ -42,12 +41,8 @@ function heroFrameForIndex(index) {
 const STEP_DURATION_BASE = 0.22;   // seconds per tile (~4.5 tiles/s)
 const ROTATE_COMMIT_DELAY = 0.06;  // seconds a key must be held to commit a step
 
-// Creative mode doubles hero speed (Rust entities/hero.rs::setup_hero
-// applies a 2.0 multiplier in creative). Halving the per-step duration
-// produces the same tiles-per-second result without changing the rest
-// of the tile-locked movement model.
 function stepDuration() {
-  return isCreativeMode() ? STEP_DURATION_BASE * 0.5 : STEP_DURATION_BASE;
+  return STEP_DURATION_BASE;
 }
 
 // Direction-state → sprite-row offset, multiplied by frame.h to get y.
@@ -378,14 +373,10 @@ function canEnter(player, tx, ty, zone, dir) {
   }
   // Locked gates: if the player has a matching key, consume it and open
   // the gate permanently. Otherwise the gate blocks like any rigid entity.
-  // Creative mode skips the key check entirely — gates are non-rigid in
-  // creative (per setup_gate in Rust), so the hero strolls through.
-  if (!isCreativeMode()) {
-    const gate = findGateAt(zone, tx, ty);
-    if (gate && !gate._open) {
-      if (tryUnlockGate(gate)) return true;
-      return false;
-    }
+  const gate = findGateAt(zone, tx, ty);
+  if (gate && !gate._open) {
+    if (tryUnlockGate(gate)) return true;
+    return false;
   }
   if (isEntityBlocked(zone, tx, ty)) return false;
   return true;

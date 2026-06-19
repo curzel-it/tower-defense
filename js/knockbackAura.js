@@ -21,7 +21,6 @@
 
 import { ANIMATIONS_FPS, SPRITE_SHEET_WEAPONS } from "./constants.js";
 import { getSpecies } from "./species.js";
-import { isCreativeMode } from "./creativeMode.js";
 import { hasKnockbackAura } from "./skills.js";
 import {
   getPlayerHp, getPlayerMaxHp, isPlayerDead, setPlayerHardImmunity,
@@ -63,9 +62,6 @@ export function tickKnockbackAura(zone, players, dt) {
     if (animRemaining[i] > 0) animRemaining[i] = Math.max(0, animRemaining[i] - dt);
   }
   if (!zone?.entities) return;
-  // Creative mode freezes monsters and never damages the hero, so there's
-  // nothing to react to — mirror combat/mobs short-circuiting there.
-  if (isCreativeMode()) return;
   if (!hasKnockbackAura()) return;
 
   const list = Array.isArray(players) ? players : (players ? [players] : []);

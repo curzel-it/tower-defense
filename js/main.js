@@ -1,18 +1,16 @@
 // Entry point. Wires features together; holds no game logic itself.
 
-import { STARTING_ZONE_ID, STARTING_SPAWN, PVP_ARENA_ZONE_ID } from "./constants.js";
 import { loadAssets } from "./assets.js";
 import { loadSpecies, loadStrings } from "./data.js";
-import { loadStringsData, tr } from "./strings.js";
+import { loadStringsData } from "./strings.js";
 import { installDialogue, isDialogueOpen } from "./dialogue.js";
 import { installInteract, tickInteract, tryInteractForSlot } from "./interact.js";
 import { loadSpeciesData } from "./species.js";
 import { composeBiomeSheet } from "./biomeSheet.js";
-import { buildZone, isTeleporterLocked } from "./zone.js";
 import { pickCoopSpawn } from "./coopSpawn.js";
 import { initInput, pollInput, clearInputState, clearInputHeld, pushInputPress } from "./input.js";
 import { createPlayer, updatePlayer, updateGuestAvatar } from "./player.js";
-import { createCamera, updateCamera, cameraRectFor } from "./camera.js";
+import { createCamera, updateCamera } from "./camera.js";
 import { createRenderer, render, renderViewports } from "./renderer.js";
 import { startGameLoop } from "./gameLoop.js";
 import { createBiomeAnimation, tickBiomeAnimation } from "./biomeAnimation.js";
@@ -37,21 +35,17 @@ import { installControllerPresence, isControllerPaused } from "./controllerPrese
 import { installAmmoHud, updateAmmoHud } from "./ammoHud.js";
 import { installCoinHud, updateCoinHud } from "./coinHud.js";
 import { seedStartingCoins } from "./wallet.js";
-import { tickMobs } from "./mobs.js";
 import { tickCombat } from "./combat.js";
 import { tickPlayerHealth, isPlayerDead, resetPlayerHealth } from "./playerHealth.js";
-import { tickKnockbackAura, resetKnockbackAura } from "./knockbackAura.js";
 import { installHealthHud, refreshHealthHud } from "./healthHud.js";
 import { installGiantTimerBar } from "./giantTimerBar.js";
-import { installGameOver, isGameOverOpen, showGameOver } from "./gameOver.js";
+import { installGameOver, isGameOverOpen } from "./gameOver.js";
 import { installShop, isShopOpen } from "./shop.js";
 import { installMessage, isMessageOpen } from "./message.js";
 import { applyFirstLaunch } from "./firstLaunch.js";
 import { loadProgress, saveProgress, clearProgress } from "./save.js";
-import { getZoneCache } from "./zoneCache.js";
-import { tickPushables } from "./pushables.js";
 import { updateVisibleEntities } from "./zoneVisibility.js";
-import { isCoopMode, setCoopMode, setLocalPlayerCount, localPlayerCount } from "./coopMode.js";
+import { isCoopMode, setLocalPlayerCount, localPlayerCount } from "./coopMode.js";
 import { showLoadingScreen, bumpLoadingProgress, hideLoadingScreen } from "./loadingScreen.js";
 import { runMigrations } from "./migrations.js";
 import { bootstrapOnline, onAnyClose } from "./onlineBootstrap.js";
@@ -120,11 +114,7 @@ async function main() {
   loadSettings();
   loadAudio();
   const hud = installHud();
-  // installMenu accepts a state getter so the creative-mode "Save zone"
-  // / "Export zone" / "Reset zone" actions can read state.rawZone and
-  // state.zone?.id at click time. `state` isn't assigned yet here —
-  // that's fine, the closure resolves it lazily when the user clicks.
-  installMenu(() => state);
+  installMenu();
   installMusic();
   installDialogue();
   installToast();

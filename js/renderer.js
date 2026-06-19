@@ -5,7 +5,6 @@ import { TILE_SIZE } from "./constants.js";
 import { drawEntities } from "./entities.js";
 import { getZoneCache } from "./zoneCache.js";
 import { drawLocalEffects } from "./localEffects.js";
-import { isCreativeMode } from "./creativeMode.js";
 
 export function createRenderer(canvas) {
   const ctx = canvas.getContext("2d");
@@ -95,10 +94,6 @@ function drawZoneLayers(ctx, zone, camera, frame) {
 // `vp` is the viewport rect ({ w, h }) in slice-local pixels — the ctx is
 // already translated to the slice origin, so overlays fill from (0, 0).
 function drawDarkness(ctx, vp, zone, camera, player) {
-  // Creative mode disables limited visibility entirely — the level
-  // designer needs to see everything regardless of CantSeeShit / Night.
-  // Mirrors Rust lib.rs::is_limited_visibility returning false in creative.
-  if (isCreativeMode()) return;
   // No focus player (e.g. every local avatar is dead) — skip rather than
   // dereference an undefined position, which would throw and kill the frame
   // loop. Callers pass a death-persistent focus so the cone normally stays put.

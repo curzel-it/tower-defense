@@ -13,7 +13,6 @@
 import { getSpecies } from "./species.js";
 import { isWalkable, isEntityBlocked } from "./zone.js";
 import { isTowerDefenseMode, isPvp } from "./gameMode.js";
-import { isCreativeMode } from "./creativeMode.js";
 import { isExplosive } from "./explosives.js";
 
 export const COIN_SPECIES_ID = 2010;
@@ -63,7 +62,7 @@ export function rollCoinDrop(species, rng = Math.random) {
 // footprint. No-op outside the real game. Mutates zone.entities.
 export function maybeDropCoin(zone, entity, rng = Math.random) {
   if (!zone?.entities || !entity) return;
-  if (isTowerDefenseMode() || isPvp() || isCreativeMode()) return;
+  if (isTowerDefenseMode() || isPvp()) return;
   const count = rollCoinDrop(getSpecies(entity.species_id), rng);
   scatterPickups(zone, entity, count, makeCoin, rng);
 }

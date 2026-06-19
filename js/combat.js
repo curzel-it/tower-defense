@@ -15,7 +15,6 @@ import { applyPlayerContinuousDamage, applyPlayerDamage, isPlayerDead } from "./
 import { hasPiercingKnifeSkill, hasBoomerangSkill, hasBulletCatcherSkill } from "./skills.js";
 import { addAmmo } from "./inventory.js";
 import { isExplosive } from "./explosives.js";
-import { isCreativeMode } from "./creativeMode.js";
 import { getSettings } from "./settings.js";
 import { startDeathAnimation, tickDeathAnimations } from "./deathAnimation.js";
 import { isPvp } from "./gameMode.js";
@@ -239,10 +238,6 @@ function findOverlappingPlayer(b, players) {
 
 function resolveMeleeMonsters(zone, players, dt) {
   if (!players.length) return;
-  // Creative mode: monsters can be inspected next to the hero without
-  // chewing through HP. Mirrors Rust features/monsters.rs returning
-  // before handle_melee_attack runs.
-  if (isCreativeMode()) return;
   // Off-screen monsters can't damage the player. Matches Rust's hitmap-
   // based attack resolution and prevents unseen "ghost" damage from
   // critters lurking past the camera edge.
