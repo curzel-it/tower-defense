@@ -21,7 +21,6 @@ import { isWalkable, isEntityBlocked, hasEnterableTeleporter, isTileSlippery } f
 import { playSfx } from "./audio.js";
 import { findPushableAt, pushOneTile, startSlide } from "./pushables.js";
 import { findGateAt, tryUnlockGate } from "./gateUnlock.js";
-import { findLockedTeleporterAt } from "./transitions.js";
 import { showToast } from "./toast.js";
 import { isCreativeMode } from "./creativeMode.js";
 import { resolveSkinColumn } from "./skins.js";
@@ -382,13 +381,6 @@ function canEnter(player, tx, ty, zone, dir) {
   // Creative mode skips the key check entirely — gates are non-rigid in
   // creative (per setup_gate in Rust), so the hero strolls through.
   if (!isCreativeMode()) {
-    // Locked teleporters (e.g. a dungeon's Permanent exit) never open from
-    // the front — walking into one just announces it's shut and blocks the
-    // step, mirroring Rust update_teleporter's show_locked_message.
-    if (findLockedTeleporterAt(zone, tx, ty)) {
-      showToast("This door is locked.", "regular");
-      return false;
-    }
     const gate = findGateAt(zone, tx, ty);
     if (gate && !gate._open) {
       if (tryUnlockGate(gate)) return true;

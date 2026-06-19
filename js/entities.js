@@ -25,7 +25,6 @@ import { shouldBeVisible } from "./entityVisibility.js";
 import { isCreativeMode } from "./creativeMode.js";
 import { isDying, DEATH_SPRITE } from "./deathAnimation.js";
 import { isVanishing, vanishAlpha, vanishOverlay } from "./vanishEffect.js";
-import { isDemandingAttention } from "./npcInterception.js";
 import { isGiant } from "./giantMode.js";
 
 const Z_INDEX_OVERLAY = 99;
@@ -337,15 +336,6 @@ function draw(ctx, e, camera) {
     const dirKey = (e.direction || "down").toLowerCase();
     const table = moving ? DIR_ROW_MOVING : DIR_ROW_STILL;
     dirRow = table[dirKey] ?? DIR_ROW_STILL.down;
-  }
-
-  // "Demands attention" NPCs render the exclamation-mark row (row 8, past the
-  // 8 directional rows) and animate it regardless of movement — mirrors the
-  // Rust core's update_sprite_for_current_state. (Dying entities never reach
-  // here; drawDeath returns above.)
-  if (!reskin && isDemandingAttention(e)) {
-    dirRow = 8;
-    frame = frames > 1 ? Math.floor(animClock * ANIMATIONS_FPS) % frames : 0;
   }
 
   const offsetX = (e._frameOffsetX | 0);

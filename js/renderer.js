@@ -4,8 +4,6 @@
 import { TILE_SIZE } from "./constants.js";
 import { drawEntities } from "./entities.js";
 import { getZoneCache } from "./zoneCache.js";
-import { drawCutscenes } from "./cutscenes.js";
-import { drawTrails } from "./trails.js";
 import { drawLocalEffects } from "./localEffects.js";
 import { isCreativeMode } from "./creativeMode.js";
 
@@ -40,13 +38,11 @@ export function render(renderer, zone, camera, player, biomeFrame, opts = {}) {
   ctx.fillRect(0, 0, vp.w, vp.h);
 
   drawZoneLayers(ctx, zone, camera, biomeFrame | 0);
-  drawTrails(ctx, zone, camera);
   drawEntities(ctx, zone, camera, player);
   // Guest-local cosmetic flashes (e.g. the muzzle flash for the guest's own
   // predicted shot). Empty/no-op on the host. Above entities so it reads as a
   // flash over the world.
   drawLocalEffects(ctx, camera);
-  drawCutscenes(ctx, zone, camera);
   drawDarkness(ctx, vp, zone, camera, focus);
 
   ctx.restore();

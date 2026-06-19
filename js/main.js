@@ -23,8 +23,6 @@ import { installHud, updateHud } from "./hud.js";
 import { loadAudio } from "./audio.js";
 import { loadSettings, getSettings, resolveLanguage } from "./settings.js";
 import { installMenu, isMenuOpen, openMenu } from "./menu.js";
-import { installTransitions, findTeleporterAt, travelTo } from "./transitions.js";
-import { checkPickup } from "./pickups.js";
 import { installMusic, playTrack } from "./music.js";
 import { installTouchControls, setInteractPrompt, updateTouchCombat } from "./touch.js";
 import { installToast, showToast } from "./toast.js";
@@ -40,11 +38,7 @@ import { installAmmoHud, updateAmmoHud } from "./ammoHud.js";
 import { installCoinHud, updateCoinHud } from "./coinHud.js";
 import { seedStartingCoins } from "./wallet.js";
 import { tickMobs } from "./mobs.js";
-import { tickMonsterFusion } from "./monsters.js";
-import { tickMinionSpawning } from "./minions.js";
 import { tickCombat } from "./combat.js";
-import { tickAfterDialogue } from "./afterDialogue.js";
-import { tickNpcInterception, isInterceptionActive } from "./npcInterception.js";
 import { tickPlayerHealth, isPlayerDead, resetPlayerHealth } from "./playerHealth.js";
 import { tickKnockbackAura, resetKnockbackAura } from "./knockbackAura.js";
 import { installHealthHud, refreshHealthHud } from "./healthHud.js";
@@ -52,13 +46,9 @@ import { installGiantTimerBar } from "./giantTimerBar.js";
 import { installGameOver, isGameOverOpen, showGameOver } from "./gameOver.js";
 import { installShop, isShopOpen } from "./shop.js";
 import { installMessage, isMessageOpen } from "./message.js";
-import { installFastTravel, isFastTravelOpen, tickFastTravel, markVisited } from "./fastTravel.js";
 import { applyFirstLaunch } from "./firstLaunch.js";
 import { loadProgress, saveProgress, clearProgress } from "./save.js";
 import { getZoneCache } from "./zoneCache.js";
-import { setupPuzzles, tickPuzzles } from "./puzzles.js";
-import { setupCutscenes, tickCutscenes } from "./cutscenes.js";
-import { tickTrails } from "./trails.js";
 import { tickPushables } from "./pushables.js";
 import { updateVisibleEntities } from "./zoneVisibility.js";
 import { isCoopMode, setCoopMode, setLocalPlayerCount, localPlayerCount } from "./coopMode.js";
@@ -135,7 +125,6 @@ async function main() {
   // state.zone?.id at click time. `state` isn't assigned yet here —
   // that's fine, the closure resolves it lazily when the user clicks.
   installMenu(() => state);
-  installTransitions();
   installMusic();
   installDialogue();
   installToast();
@@ -261,12 +250,10 @@ async function main() {
   installInteract(() => state);
   installShooting(() => state);
   installMelee(() => state);
-  installFastTravel(() => state);
   installWeaponSelect({
     isBlocked: () =>
       isMenuOpen() || isDialogueOpen() || isGameOverOpen() || isShopOpen() ||
-      isFastTravelOpen() || isMessageOpen() || isPartyPanelOpen() || isAccountPanelOpen() ||
-      isInterceptionActive(),
+      isMessageOpen() || isPartyPanelOpen() || isAccountPanelOpen(),
   });
   setGamepadAction("shoot", () => {
     // In Tower Defense the Shoot button fires the active hero during a wave;
@@ -311,10 +298,7 @@ async function main() {
     setGamepadAction("meleeNext",  () => cycleWeapon(SLOT_MELEE,  idx, +1), slot);
     setGamepadAction("meleePrev",  () => cycleWeapon(SLOT_MELEE,  idx, -1), slot);
   }
-  if (state.zone) {
-    markVisited(state.zone.id);
-    if (state.zone.soundtrack) playTrack(state.zone.soundtrack);
-  }
+  if (state.zone?.soundtrack) playTrack(state.zone.soundtrack);
 
   // Wire switchRole's state-handler registry so role transitions can
   // rebuild / wipe the world state. Done BEFORE the boot deep-link
@@ -494,11 +478,6 @@ function tickGuestFrame(dt, state, renderer, hud, biomeAnim) {
   // Without this, mobs / pushables / projectiles snap at the broadcaster's
   // 20 Hz tick instead of sliding smoothly. See mirrorWorld.refreshMirrorEntities.
   refreshMirrorEntities();
-  // Advance any cutscenes the host told us are playing. mirror:true
-  // suppresses auto-trigger (host owns that) and skips finishCutscene
-  // (we wait for event:cutsceneEnd instead, to avoid double-spawning
-  // onEnd entities that the host's snapshot will already mirror in).
-  tickCutscenes(mZone, null, dt, { mirror: true });
   const mPlayers = getMirrorPlayers();
   const renderPlayers = buildGuestRenderPlayers(mPlayers);
   if (!renderPlayers.length) {
@@ -615,7 +594,6 @@ export function setLocalPlayers(n) {
 
   ensureLocalExtra(3, n >= 3);
   ensureLocalExtra(4, n >= 4);
-  deathToasted.clear();
   // Re-derive the split-screen slices + per-slice cameras for the new count
   // (reapplyAutoZoom re-runs the zoom apply, whose onApply calls
   // recomputeSlices) before the HUD re-anchors its bars to the slices.
@@ -642,307 +620,6 @@ function ensureLocalExtra(slot, want) {
 // Back-compat thin wrappers (party panel / any other callers).
 export function enableLocalCoop() { setLocalPlayers(2); }
 export function disableLocalCoop() { setLocalPlayers(1); }
-
-function snapToEntry(player, zone) {
-  const tele = (zone.entities || []).find(e => e.species_id === 1019 && e.frame);
-  let x = tele?.frame.x ?? 0;
-  let y = tele?.frame.y ?? 0;
-  if (!Number.isFinite(x) || !Number.isFinite(y)) { x = 1; y = 1; }
-  x = Math.max(0, Math.min(zone.cols - 1, x));
-  y = Math.max(0, Math.min(zone.rows - 1, y));
-  player.tileX = x; player.tileY = y;
-  player.x = x; player.y = y;
-}
-
-// Mirrors Rust world_setup::destination_x_y with source=0 (no back-link):
-// 1001 has a hard-coded entry tile, every other zone falls back to any
-// teleporter, then to the zone centre. Used to seed zone.spawnPoint
-// when there's no incoming travelTo to derive it from.
-function computeEntryTile(zone) {
-  if (zone.id === STARTING_ZONE_ID) {
-    return { x: STARTING_SPAWN.x, y: STARTING_SPAWN.y };
-  }
-  const tele = (zone.entities || []).find(e => e.species_id === 1019 && e.frame);
-  if (tele) return { x: tele.frame.x, y: tele.frame.y };
-  return {
-    x: Math.max(0, Math.floor(zone.cols / 2)),
-    y: Math.max(0, Math.floor(zone.rows / 2)),
-  };
-}
-
-function applySavedSpawn(player, zone, saved) {
-  const x = Math.max(0, Math.min(zone.cols - 1, saved.x));
-  const y = Math.max(0, Math.min(zone.rows - 1, saved.y));
-  player.tileX = x; player.tileY = y;
-  player.x = x; player.y = y;
-  if (saved.direction) player.direction = saved.direction;
-}
-
-// Three flags model the host's death lifecycle:
-//   hostDying              — traditional gameOver flow is in motion
-//                            (overlay shown, awaiting Continue + travelTo).
-//   hostWaitingForRevive   — host is dead but online guests are alive,
-//                            so the sim keeps ticking and the host
-//                            spectates until a teleporter revives them
-//                            (mirror of offline P2's "wait for zone
-//                            change" rule, extended to the host).
-//   hostDeathToasted       — one-shot latch for the "you died"
-//                            notification so it doesn't spam every tick
-//                            that the host stays dead.
-let hostDying = false;
-let hostWaitingForRevive = false;
-let hostDeathToasted = false;
-
-// True when at least one online-guest avatar in the host's local world
-// is still alive. Local-coop P2 is excluded — local coop shares one
-// screen so the offline behavior (P1 death → full pause + Continue)
-// stays correct there.
-function hasLiveOnlineGuests(state) {
-  if (state.player2?.playerId && !isPlayerDead(state.player2.index | 0)) return true;
-  if (Array.isArray(state.players)) {
-    for (const s of state.players) {
-      if (s.player?.playerId && !isPlayerDead(s.player.index | 0)) return true;
-    }
-  }
-  return false;
-}
-
-function handleHostState(state) {
-  const hostDead = isPlayerDead(0);
-  if (!hostDead) {
-    // Clear latent waiting/toasted state so a future death re-toasts.
-    hostWaitingForRevive = false;
-    hostDeathToasted = false;
-    return;
-  }
-  // Online co-op: keep the sim running so live guests can keep playing
-  // and trigger the next zone change (which revives the host via
-  // transitions.js). The full-screen gameOver overlay would pause the
-  // host's local tick — and a paused host = no world updates = guests
-  // freeze. A toast announces the death without blocking the tick.
-  if (hasLiveOnlineGuests(state)) {
-    hostWaitingForRevive = true;
-    if (!hostDeathToasted) {
-      hostDeathToasted = true;
-      showToast("You died — waiting for a teammate to find a teleporter", "longHint");
-    }
-    return;
-  }
-  // Solo (or with local-coop P2 only): traditional gameOver — full
-  // overlay, Continue button, travelTo + revive everyone on commit.
-  hostWaitingForRevive = false;
-  if (hostDying) return;
-  hostDying = true;
-  showGameOver(() => {
-    // Mirror Rust engine.revive(): teleport to the current zone's
-    // spawn_point (the door the player came in through), not the global
-    // starting zone. travelTo reloads the zone fresh so ephemeral
-    // entities reset just like Rust's full teleport reload.
-    const sp = state.zone?.spawnPoint
-      ?? { x: STARTING_SPAWN.x, y: STARTING_SPAWN.y };
-    const zoneId = state.zone?.id ?? STARTING_ZONE_ID;
-    const dest = { zone: zoneId, x: sp.x, y: sp.y, direction: "Down" };
-    travelTo(state, dest).then(() => {
-      // Revive resets every player's HP (P1 + P2) and the death flags
-      // — the next tick treats P2 as alive again next to P1 (the
-      // co-op spawn rule re-applied inside travelTo).
-      resetPlayerHealth();
-      resetKnockbackAura();
-      deathToasted.clear();
-      hostDeathToasted = false;
-      hostDying = false;
-    });
-  });
-}
-
-// One-shot toast latches keyed by player index — the game keeps running
-// so the per-frame death check would re-fire every tick without them.
-// Covers every co-op teammate (local P2-P4 and, when hosting, guests).
-const deathToasted = new Set();
-function handleCoopDeaths(state) {
-  const mates = [];
-  if (state.player2) mates.push(state.player2);
-  if (Array.isArray(state.players)) {
-    for (const s of state.players) if (s.player) mates.push(s.player);
-  }
-  for (const p of mates) {
-    const idx = p.index | 0;
-    const dead = isPlayerDead(idx);
-    if (dead && !deathToasted.has(idx)) {
-      deathToasted.add(idx);
-      const msg = tr("notification.player.died").replace("%PLAYER_NAME%", String(idx + 1));
-      showToast(msg, "longHint");
-    } else if (!dead && deathToasted.has(idx)) {
-      // Defensive: a heal brought them back mid-zone. Drop the latch so a
-      // future death re-toasts.
-      deathToasted.delete(idx);
-    }
-  }
-}
-
-// Returns every live player as an array, suitable for systems that
-// want to act on each player (pickups, combat).
-function allPlayers(state) {
-  const out = [];
-  if (state.player && !isPlayerDead(state.player.index | 0)) out.push(state.player);
-  if (state.player2 && !isPlayerDead(state.player2.index | 0)) out.push(state.player2);
-  if (Array.isArray(state.players)) {
-    for (const s of state.players) {
-      if (s.player && !isPlayerDead(s.player.index | 0)) out.push(s.player);
-    }
-  }
-  return out;
-}
-
-// Local players in slot order (P1, P2, P3, P4), INCLUDING dead ones —
-// split-screen maps slice i to player i and keeps a downed player's slice
-// on their corpse rather than re-flowing the grid. Online guests
-// (playerId != null) are excluded; split-screen is local-only.
-function orderedLocalPlayers(state) {
-  const out = [];
-  if (state.player) out.push(state.player);
-  if (state.player2) out.push(state.player2);
-  if (Array.isArray(state.players)) {
-    const extras = state.players
-      .filter((e) => e.playerId == null && e.player)
-      .sort((a, b) => a.slot - b.slot);
-    for (const e of extras) out.push(e.player);
-  }
-  return out;
-}
-
-// Per-slice draw descriptors for renderViewports: each slice's pixel rect, its
-// own camera, and the player its darkness cone tracks. The full live-player
-// list is drawn into every slice by the renderer, so partners still appear.
-function buildViewports(state) {
-  const slices = getSlices();
-  const players = orderedLocalPlayers(state);
-  return slices.map((s, i) => ({
-    rectPx: s.rectPx,
-    camera: state.cameras[i] ?? state.camera,
-    focusPlayer: players[i] ?? state.player,
-  }));
-}
-
-// Which viewports the host simulates. Offline / local co-op gate entity
-// ticks to the single shared camera, exactly as before. Online hosts
-// also union a camera-sized rect centred on each off-camera guest, so a
-// guest who wandered away from the host doesn't walk into frozen mobs /
-// pickups the host wasn't ticking. Returns a single camera (legacy path)
-// or an array; updateVisibleEntities accepts both.
-function simulationViewports(state) {
-  // Split-screen local co-op: tick entities visible to ANY slice so a
-  // partner who wandered into their own slice keeps live mobs / pickups.
-  if (sliceCount() > 1) return state.cameras;
-  if (getRuntimeRole() !== "host") return state.camera;
-  const cams = [state.camera];
-  const { w, h } = state.camera;
-  for (const p of allPlayers(state)) {
-    if (p === state.player) continue;
-    cams.push(cameraRectFor(p, w, h));
-  }
-  return cams;
-}
-
-// What the renderer draws on the host/offline screen. Dead avatars are
-// filtered out so a downed co-op player vanishes until the next revive.
-function livePlayersForRender(state) {
-  return allPlayers(state);
-}
-
-// Snap the camera(s) to follow the player(s). The followed player moves
-// slowly, so a snap-follow reads as smooth.
-function applyCamera() {
-  // Split-screen local multiplayer (co-op or PvP): each slice's camera
-  // follows its own player (dead included — the slice holds on the corpse).
-  if (sliceCount() > 1) {
-    const players = orderedLocalPlayers(state);
-    for (let i = 0; i < state.cameras.length; i++) {
-      updateCamera(state.cameras[i], players[i] ?? state.player, state.zone);
-    }
-    return;
-  }
-  // Single slice: online host and offline single-player both follow their
-  // own avatar. (Online guests run their own camera in tickGuestFrame.)
-  updateCamera(state.camera, state.player, state.zone);
-}
-
-function maybeTeleport(state) {
-  const { player, player2, zone, lastTile, lastTile2 } = state;
-  const p1Moved = player.tileX !== lastTile.x || player.tileY !== lastTile.y;
-  const p2Moved = player2 && lastTile2
-    && (player2.tileX !== lastTile2.x || player2.tileY !== lastTile2.y);
-  // Track movement for any slot-3/4 network guest; entries carry their
-  // own lastTile so the trigger logic doesn't have to special-case them.
-  const extras = [];
-  if (Array.isArray(state.players)) {
-    for (const s of state.players) {
-      if (!s.lastTile) s.lastTile = { x: s.player.tileX, y: s.player.tileY };
-      if (s.player.tileX !== s.lastTile.x || s.player.tileY !== s.lastTile.y) {
-        extras.push(s);
-      }
-    }
-  }
-  if (!p1Moved && !p2Moved && extras.length === 0) return;
-  if (p1Moved) {
-    lastTile.x = player.tileX;
-    lastTile.y = player.tileY;
-  }
-  if (p2Moved) {
-    lastTile2.x = player2.tileX;
-    lastTile2.y = player2.tileY;
-  }
-  for (const s of extras) {
-    s.lastTile.x = s.player.tileX;
-    s.lastTile.y = s.player.tileY;
-  }
-  // Pickups: scan once with both players in play so whichever player
-  // stepped onto the pickup tile wins it.
-  checkPickup(state);
-  // Teleporters: any player triggers a transition so whoever steps onto
-  // the tile moves everyone to the new zone. This covers P1, local offline
-  // P2, online guest P2 (with a playerId) and any slot-3/4 network guest —
-  // travelTo repositions the rest of the party around the trigger.
-  let teleEntity = null;
-  if (p1Moved) {
-    teleEntity = findTeleporterAt(zone, player.tileX, player.tileY);
-  }
-  if (!teleEntity && p2Moved) {
-    teleEntity = findTeleporterAt(zone, player2.tileX, player2.tileY);
-  }
-  if (!teleEntity) {
-    for (const s of extras) {
-      teleEntity = findTeleporterAt(zone, s.player.tileX, s.player.tileY);
-      if (teleEntity) break;
-    }
-  }
-  const tele = teleEntity;
-  // Locked teleporters never transition — collision keeps the player off
-  // the tile, but guard here too in case a spawn/co-op reposition lands a
-  // player on one. Treat a locked teleporter as "no teleporter".
-  if (tele && !isTeleporterLocked(tele)) {
-    // Zone data stores destination.y as the Rust frame.y (sprite TOP)
-    // while travelTo / player.tileY work in feet-tile space — bump by 1
-    // so the player drops onto the floor in front of the destination
-    // door instead of clipping a tile high. EXCEPTION: (0, 0) is a
-    // magic value telling resolveSpawn to look up the back-teleporter
-    // in the destination zone (covers house interiors); +1 here would
-    // become (0, 1) and the magic-value check would miss, dumping the
-    // player on the top-left corner of the interior on a wall tile.
-    const d = tele.destination;
-    const dx = d?.x ?? 0;
-    const dy = d?.y ?? 0;
-    const dest = (dx === 0 && dy === 0)
-      ? { ...d }
-      : { ...d, y: dy + 1 };
-    travelTo(state, dest).then(() => {
-      markVisited(state.zone.id);
-      flushPendingProgress();
-    });
-  } else {
-    persistProgressThrottled();
-  }
-}
 
 // Persist the player's "home" position — but never while in a PvP match.
 // The arena (zone 1301) is transient: persisting it would boot the next

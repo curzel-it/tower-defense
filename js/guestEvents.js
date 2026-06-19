@@ -6,7 +6,6 @@
 // the matching host-side hooks land.
 
 import { showToast } from "./toast.js";
-import { fadeOverlayOut, fadeOverlayIn, FADE_OVERLAY_MS } from "./transitions.js";
 import { addAmmo, getAmmo, removeAmmo } from "./inventory.js";
 import { addCoins } from "./wallet.js";
 import { showGameOver, hideGameOver, isGameOverOpen, showMatchResult } from "./gameOver.js";
@@ -18,7 +17,6 @@ import {
   advanceNetworkDialogue,
   closeNetworkDialogue,
 } from "./dialogue.js";
-import { startCutsceneByKey, endCutsceneByKey } from "./cutscenes.js";
 import { getMirrorZone } from "./mirrorWorld.js";
 import { setHostPausedRemote } from "./guestHostPause.js";
 import { showTdHud, hideTdHud, updateTdHud, showTdGameOver } from "./tdHud.js";
@@ -91,9 +89,6 @@ export function dispatch(msg) {
         showToast(msg.text, msg.toastType || "hint", { _fromNetwork: true });
       }
       return;
-    case "zoneChange":
-      handleZoneChange();
-      return;
     case "pickup":
       handlePickup(msg);
       return;
@@ -117,12 +112,6 @@ export function dispatch(msg) {
       return;
     case "dialogueClose":
       closeNetworkDialogue();
-      return;
-    case "cutsceneStart":
-      if (typeof msg.key === "string") startCutsceneByKey(getMirrorZone(), msg.key);
-      return;
-    case "cutsceneEnd":
-      if (typeof msg.key === "string") endCutsceneByKey(getMirrorZone(), msg.key);
       return;
     case "hostPause":
       setHostPausedRemote(!!msg.paused);
@@ -244,15 +233,6 @@ function handleAmmoSet(msg) {
     if (target > have) addAmmo(sid, target - have, 0);
     else removeAmmo(sid, have - target, 0);
   }
-}
-
-// Drive the same fade overlay that the offline transitions code uses.
-// Host sends event:zoneChange BEFORE the new-zone full snapshot; we
-// fade to black immediately, then fade back in once the snapshot has
-// had a chance to land (matching the offline transition rhythm).
-function handleZoneChange() {
-  fadeOverlayOut();
-  setTimeout(() => fadeOverlayIn(), FADE_OVERLAY_MS);
 }
 
 // Self death → show the gameOver overlay in "waiting for host" mode

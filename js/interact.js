@@ -6,7 +6,6 @@
 // player, so the action is discoverable without reading the README.
 
 import { showDialogue, resolveEntityDialogue, isDialogueOpen, speakerNameForEntity } from "./dialogue.js";
-import { handleAfterDialogue } from "./afterDialogue.js";
 import { openShop, isShopOpen } from "./shop.js";
 import { matchesAction } from "./keyBindings.js";
 import { isCoopMode, isCoopActive, localPlayerCount, COOP_KEYMAPS } from "./coopMode.js";
@@ -96,7 +95,6 @@ export function openDialogueWithEntity(state, initiator, target, { local = false
   if (!dialogue) return null;
   const speaker = speakerNameForEntity(target);
   return showDialogue(dialogue, initiator.index | 0, speaker).then(() => {
-    handleAfterDialogue(state.zone, target);
     // A clerk carrying shop_stock opens the buy screen once the greeting
     // closes (Pokémon-mart cadence). Local players only — a host driving a
     // remote guest's interact shouldn't pop the modal on the host's screen.

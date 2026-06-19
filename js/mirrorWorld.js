@@ -14,7 +14,6 @@ import { AURA_ANIM_DURATION } from "./knockbackAura.js";
 import { setGameMode } from "./gameMode.js";
 import { loadZone } from "./data.js";
 import { buildZone } from "./zone.js";
-import { setupCutscenes } from "./cutscenes.js";
 import { evictZoneCache } from "./zoneCache.js";
 import { GAME_FRAME_SCHEMA } from "./net.js";
 import { isPushable, SLIDE_DURATION } from "./pushables.js";
@@ -255,11 +254,6 @@ async function loadZoneAndApplySnapshot(msg, opts) {
     // same task as the zone swap rather than next-GC-pass.
     if (zone && zone !== z) evictZoneCache(zone);
     zone = z;
-    // The host's snapshot ships dynamic state only — cutscene
-    // definitions come from the level JSON. Initialize them on the
-    // mirror so event:cutsceneStart can flip _isPlaying on the right
-    // entry and drawCutscenes has something to paint.
-    setupCutscenes(zone);
     pendingZoneId = null;
     zonePromise = null;
     applySnapshotToCurrentZone(msg, opts.at ?? nowMs());

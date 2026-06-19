@@ -22,7 +22,6 @@ import { onAccountChange, getUser, getToken, isSignedIn, captureSession, restore
 import { markDirty as markCloudSaveDirty } from "./cloudSave.js";
 import { deleteCloudSave } from "./saveApi.js";
 import { isGameOverOpen } from "./gameOver.js";
-import { isFastTravelOpen } from "./fastTravel.js";
 import { isMessageOpen } from "./message.js";
 import { isDialogueOpen } from "./dialogue.js";
 import { showConfirm, isConfirmOpen } from "./confirmDialog.js";
@@ -36,7 +35,6 @@ import { el } from "./dom.js";
 // own listener — and don't pop the pause menu on top of it.
 function isAnotherModalOpen() {
   return isGameOverOpen()
-    || isFastTravelOpen()
     || isMessageOpen()
     || isDialogueOpen()
     || isPartyPanelOpen()
